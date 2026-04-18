@@ -576,15 +576,45 @@ export async function deleteGradingScript(homeworkId) {
   return await api.delete(`/homework/${homeworkId}/grading_script`)
 }
 
-// ============ 天梯榜 ============
+// ============ 课程资源 ============
 
 /**
- * 获取班级天梯榜（按课程+班级）
- * @param {string} courseId - 课程ID
- * @param {string} classId - 班级ID
+ * 获取课程资源列表
+ * @param {object} params - { courseId, term }
  */
-export async function getClassRanking(courseId, classId) {
-  return await api.get('/homework/ranking', { params: { course_id: courseId, class_id: classId } })
+export async function getCourseResources(params = {}) {
+  const p = new URLSearchParams()
+  if (params.courseId) p.append('course_id', params.courseId)
+  if (params.term) p.append('term', params.term)
+  return await api.get(`/resources?${p.toString()}`)
+}
+
+/**
+ * 上传课程资源
+ * @param {FormData} formData - 包含 course_id, course_name, term, title, description, file
+ */
+export async function uploadCourseResource(formData) {
+  return await api.post('/resources/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
+
+/**
+ * 删除课程资源
+ * @param {number} resourceId
+ */
+export async function deleteCourseResource(resourceId) {
+  return await api.delete(`/resources/${resourceId}`)
+}
+
+/**
+ * 下载课程资源
+ * @param {number} resourceId
+ */
+export function downloadCourseResource(resourceId) {
+  const token = sessionStorage.getItem('tc_token') || sessionStorage.getItem('tc_student_token')
+  const url = `${api.defaults.baseURL}/resources/download/${resourceId}?token=${token}`
+  window.open(url, '_blank')
 }
 
 // ============ 学生端 API ============
@@ -625,14 +655,37 @@ export async function submitHomework(homeworkId, formData) {
   })
 }
 
-/** 获取天梯榜
- * @param {string} courseId - 课程ID（必填）
+/**
+ * 获取学生端天梯榜
+ * @param {string} courseId - 课程ID
  * @param {string} term - 学期（可选）
  */
 export async function getStudentRanking(courseId, term = '') {
   const params = { course_id: courseId }
   if (term) params.term = term
   return await api.get('/student/homework/ranking', { params })
+}
+
+/**
+ * 获取教师端班级天梯榜
+ * @param {string} courseId - 课程ID
+ * @param {string} classId - 班级ID
+ */
+export async function getClassRanking(courseId, classId) {
+  return await api.get('/homework/ranking', {
+    params: { course_id: courseId, class_id: classId }
+  })
+}
+
+/**
+ * 获取学生端课程资源
+ * @param {object} params - { courseId, term }
+ */
+export async function getStudentCourseResources(params = {}) {
+  const p = new URLSearchParams()
+  if (params.courseId) p.append('course_id', params.courseId)
+  if (params.term) p.append('term', params.term)
+  return await api.get(`/student/resources?${p.toString()}`)
 }
 
 // ============ 学生通知 API ============

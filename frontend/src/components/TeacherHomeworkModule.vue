@@ -107,7 +107,10 @@
 
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1.5">班级</label>
-              <select v-model="formData.class_id" class="w-full border-2 border-slate-100 rounded-xl px-4 py-2.5 outline-none focus:border-[#2d6a4f] transition-colors">
+              <div v-if="editingHomework && editClassName" class="w-full border-2 border-green-200 bg-green-50 rounded-xl px-4 py-2.5 text-green-700">
+                {{ editClassName }}
+              </div>
+              <select v-else v-model="formData.class_id" class="w-full border-2 border-slate-100 rounded-xl px-4 py-2.5 outline-none focus:border-[#2d6a4f] transition-colors">
                 <option value="">全部班级</option>
                 <option v-for="cls in selectedCourseClasses" :key="cls.id" :value="cls.id">{{ cls.name }}</option>
               </select>
@@ -132,6 +135,17 @@
             <!-- 附件上传 -->
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1.5">附件（作业材料）</label>
+              <!-- 编辑时显示已有附件 -->
+              <div v-if="editingHomework?.attachments?.length > 0" class="mb-3 space-y-2">
+                <p class="text-xs text-slate-500 font-medium">已有附件：</p>
+                <div v-for="att in editingHomework.attachments" :key="att.id" class="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <span class="text-sm text-slate-600 truncate flex-1">{{ att.file_name || att.original_name || '附件' }}</span>
+                  <a :href="`/api/homework/attachments/${att.id}/download?token=${getToken()}`" target="_blank" class="text-blue-500 hover:text-blue-600 text-xs flex-shrink-0">下载</a>
+                </div>
+              </div>
               <div class="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center hover:border-[#2d6a4f] transition-colors">
                 <input type="file" id="hw-files" multiple @change="handleFileSelect" class="hidden" accept="*/*">
                 <label for="hw-files" class="cursor-pointer">
@@ -480,7 +494,8 @@ import { ref, computed, onMounted } from 'vue'
 import { getHomeworkList, getHomeworkDetail, getHomeworkSubmissions, createHomework, updateHomework, deleteHomework as apiDeleteHomework, gradeHomework, uploadGradingScript, getGradingScript, getGradingScriptContent, toggleGradingAuto, deleteGradingScript, downloadGradingScript } from '../api.js'
 
 const props = defineProps({
-  courses: { type: Array, default: () => [] }
+  courses: { type: Array, default: () => [] },
+  classes: { type: Array, default: () => [] }
 })
 
 // 状态
@@ -556,6 +571,7 @@ function toggleSubDetails(subId) {
 }
 
 // 下载作业附件
+function getToken() { return sessionStorage.getItem('tc_token') || '' }
 function downloadHwAttachment(att) {
   const token = sessionStorage.getItem('tc_token')
   const url = `/api/homework/attachments/${att.id}/download?token=${token}`
@@ -605,7 +621,21 @@ const filteredHomeworkList = computed(() => {
 const selectedCourseClasses = computed(() => {
   if (!formData.value.course_id) return []
   const course = props.courses.find(c => c.id === formData.value.course_id)
-  return course?.classes || []
+  const fromCourse = course?.classes || []
+  if (fromCourse.length > 0) return fromCourse
+  // 降级：从 props.classes 中找当前作业关联班级的同名班级
+  if (editingHomework.value?.class_id && props.classes.length > 0) {
+    return props.classes.filter(cls => cls.id === editingHomework.value.class_id)
+  }
+  return fromCourse
+})
+
+// 编辑时显示已有班级名称（非下拉选项时展示）
+const editClassName = computed(() => {
+  if (!editingHomework.value) return ''
+  const opts = selectedCourseClasses.value
+  if (opts.length > 0) return ''
+  return editingHomework.value.class_name || ''
 })
 
 // 方法
@@ -651,6 +681,7 @@ function editHomework(hw) {
     deadline: hw.deadline ? new Date(hw.deadline).toISOString().slice(0, 16) : '',
     total_score: hw.total_score || 100
   }
+  selectedFiles.value = []
   showCreateModal.value = true
 }
 

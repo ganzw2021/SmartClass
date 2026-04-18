@@ -737,6 +737,111 @@ def delete_hw_attachment(aid):
     cur.execute("DELETE FROM homework_attachments WHERE id=%s",(aid,))
     db.close(); return success()
 
+# ======= 课程资源管理 =======
+@app.route('/api/resources', methods=['GET'])
+@teacher_required
+def get_resources():
+    """获取课程资源列表"""
+    course_id = request.args.get('course_id', '')
+    term = request.args.get('term', '')
+    db=get_db(); cur=db.cursor()
+    sql = "SELECT * FROM course_resources WHERE teacher_id=%s"
+    params = [request.teacher_id]
+    if course_id:
+        sql += " AND course_id=%s"
+        params.append(course_id)
+    if term:
+        sql += " AND term=%s"
+        params.append(term)
+    sql += " ORDER BY created_at DESC"
+    cur.execute(sql, params)
+    return success(_rows(cur.fetchall()))
+
+@app.route('/api/resources/<int:rid>', methods=['DELETE'])
+@teacher_required
+def delete_resource(rid):
+    """删除课程资源"""
+    db=get_db(); cur=db.cursor()
+    cur.execute("SELECT file_path FROM course_resources WHERE id=%s AND teacher_id=%s",(rid,request.teacher_id))
+    r=cur.fetchone()
+    if not r: db.close(); return err('资源不存在',404)
+    # 删除物理文件
+    try:
+        fp=os.path.join(BASE_DIR,r['file_path'])
+        if os.path.exists(fp): os.remove(fp)
+    except: pass
+    cur.execute("DELETE FROM course_resources WHERE id=%s",(rid,))
+    db.close(); return success()
+
+@app.route('/api/resources/upload', methods=['POST'])
+@teacher_required
+def upload_resource():
+    """上传课程资源"""
+    course_id=request.form.get('course_id','')
+    course_name=request.form.get('course_name','')
+    term=request.form.get('term','')
+    title=request.form.get('title','')
+    description=request.form.get('description','')
+    if not course_id or not title: return err('课程ID和标题不能为空')
+    if 'file' not in request.files: return err('请选择要上传的文件')
+    f=request.files['file']
+    if not f.filename: return err('请选择要上传的文件')
+    # 保存文件
+    ext=os.path.splitext(f.filename)[1]
+    fname=f"{uuid.uuid4().hex}{ext}"
+    save_dir=os.path.join(UPLOAD_DIR,'resources')
+    os.makedirs(save_dir,exist_ok=True)
+    fpath=os.path.join(save_dir,fname)
+    f.save(fpath)
+    # 写入数据库
+    db=get_db(); cur=db.cursor()
+    cur.execute("""INSERT INTO course_resources
+        (course_id,course_name,term,teacher_id,title,description,file_name,file_path,file_size,file_type)
+        VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (course_id,course_name,term,request.teacher_id,title,description,
+         f.filename,f'uploads/resources/{fname}',os.path.getsize(fpath),ext))
+    db.close()
+    return success({'message':'上传成功'})
+
+@app.route('/api/resources/download/<int:rid>', methods=['GET'])
+@teacher_required
+def download_resource(rid):
+    """下载课程资源"""
+    db=get_db(); cur=db.cursor()
+    cur.execute("SELECT * FROM course_resources WHERE id=%s",(rid,))
+    r=cur.fetchone()
+    if not r: db.close(); return err('资源不存在',404)
+    fpath=os.path.join(BASE_DIR,r['file_path'])
+    if not os.path.exists(fpath): db.close(); return err('文件不存在',404)
+    db.close()
+    return send_file(fpath,as_attachment=True,download_name=r['file_name'])
+
+@app.route('/api/student/resources', methods=['GET'])
+@student_required
+def get_student_resources():
+    """学生端获取课程资源"""
+    course_id=request.args.get('course_id','')
+    term=request.args.get('term','')
+    db=get_db(); cur=db.cursor()
+    # 获取学生可选的课程
+    cur.execute("SELECT DISTINCT c.id,c.name,c.term FROM courses c JOIN course_classes cc ON cc.course_id=c.id JOIN students s ON s.class_id=cc.class_id WHERE s.id=%s",(request.teacher_id,))
+    courses=cur.fetchall()
+    if not courses: return success([])
+    course_ids=[str(c['id']) for c in courses]
+    # 查询资源
+    sql="SELECT * FROM course_resources WHERE course_id IN ("+",".join(["%s"]*len(course_ids))+")"
+    params=course_ids
+    if course_id:
+        sql+=" AND course_id=%s"
+        params.append(course_id)
+    if term:
+        sql+=" AND term=%s"
+        params.append(term)
+    sql+=" ORDER BY created_at DESC"
+    cur.execute(sql,params)
+    db.close()
+    return success(_rows(cur.fetchall()))
+
 @app.route('/api/homework/<int:hid>/submissions', methods=['GET'])
 @teacher_required
 def get_hw_submissions(hid):
@@ -845,8 +950,16 @@ def _run_grading(script_path, files, hid, sid, total_score):
         db=get_db(); cur=db.cursor()
         cur.execute("UPDATE homework_submissions SET grading_status='grading' WHERE id=%s",(sid,))
         db.close()
-        # 取第一个文件的路径传给脚本（评分脚本规范：stdin 接收 file_path）
-        file_path = files[0]['path'] if files else ''
+        # 取第一个文件的绝对路径传给脚本（评分脚本规范：stdin 接收 file_path）
+        # file_path 在数据库中存的是 "submissions/xxx.xlsx"（相对 uploads 目录）
+        # 需要拼接 UPLOAD_DIR 转成绝对路径，避免 cwd 变化导致文件找不到
+        raw = files[0]['path'] if files else ''
+        if os.path.isabs(raw):
+            file_path = raw
+        elif os.path.exists(raw):        # 兼容已存绝对路径的老数据
+            file_path = raw
+        else:
+            file_path = os.path.normpath(os.path.join(UPLOAD_DIR, raw))
         inp=json.dumps({'file_path': file_path, 'files': files, 'homework_id': hid, 'submission_id': sid})
         env=os.environ.copy(); env['PYTHONIOENCODING']='utf-8'; env['PYTHONUTF8']='1'
         # 用 bytes 捕获避免 Windows GBK 编码问题，手动 decode 为 utf-8
