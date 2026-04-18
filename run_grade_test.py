@@ -1,0 +1,48 @@
+import pymysql, os, threading, sys, time
+from dotenv import load_dotenv
+load_dotenv('backend/.env')
+
+conn = pymysql.connect(
+    host=os.getenv('DB_HOST','localhost'),
+    port=int(os.getenv('DB_PORT',3306)),
+    user=os.getenv('DB_USER','root'),
+    password=os.getenv('DB_PASSWORD',''),
+    database=os.getenv('DB_NAME','smartclass'),
+    charset='utf8mb4',
+    cursorclass=pymysql.cursors.DictCursor
+)
+cur = conn.cursor()
+sql = "SELECT hs.id FROM homework_submissions hs JOIN submission_attachments sa ON sa.submission_id=hs.id WHERE hs.homework_id=6 AND hs.grading_status IN ('none','pending','failed') LIMIT 3"
+cur.execute(sql)
+rows = cur.fetchall()
+sub_ids = [r['id'] for r in rows]
+cur.close()
+conn.close()
+print('待评分:', sub_ids)
+
+sys.path.insert(0, r'C:\smartclass\backend')
+import app as flask_app
+time.sleep(2)
+
+for sid in sub_ids:
+    t = threading.Thread(target=flask_app._trigger_auto_grading, args=(sid,), daemon=True)
+    t.start()
+    print('已触发:', sid)
+
+time.sleep(15)
+
+conn2 = pymysql.connect(
+    host=os.getenv('DB_HOST','localhost'),
+    port=int(os.getenv('DB_PORT',3306)),
+    user=os.getenv('DB_USER','root'),
+    password=os.getenv('DB_PASSWORD',''),
+    database=os.getenv('DB_NAME','smartclass'),
+    charset='utf8mb4',
+    cursorclass=pymysql.cursors.DictCursor
+)
+cur2 = conn2.cursor()
+cur2.execute('SELECT id, student_name, grading_status, auto_score, LEFT(auto_grade_message,100) as msg FROM homework_submissions WHERE homework_id=6 ORDER BY id LIMIT 8')
+for r in cur2: print(r)
+cur2.close()
+conn2.close()
+print('完成')

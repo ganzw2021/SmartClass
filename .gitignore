@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Uploads and generated files
+backend/uploads/*
+!backend/uploads/.gitkeep
+!backend/uploads/.gitkeep/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Database
+*.db
+*.sqlite
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
