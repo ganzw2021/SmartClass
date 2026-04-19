@@ -396,6 +396,23 @@ export async function getAdminCourseList() {
   return await api.get('/admin/course_list')
 }
 
+/** 课程管理 CRUD */
+export async function getAdminCourses() {
+  return await api.get('/admin/courses')
+}
+export async function createAdminCourse(data) {
+  return await api.post('/admin/courses', data)
+}
+export async function updateAdminCourse(id, data) {
+  return await api.put(`/admin/courses/${id}`, data)
+}
+export async function deleteAdminCourse(id) {
+  return await api.delete(`/admin/courses/${id}`)
+}
+export async function batchCreateCourses(data) {
+  return await api.post('/admin/courses/batch', data)
+}
+
 /** 管理端班级列表（用于筛选器） */
 export async function getAdminClassList() {
   return await api.get('/admin/class_list')

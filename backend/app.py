@@ -1632,6 +1632,103 @@ def admin_course_list():
     db.close()
     return success([{'id':r['id'],'name':r['name'],'term':r['term']} for r in rows])
 
+# ===== 课程管理 =====
+@app.route('/api/admin/courses', methods=['GET'])
+@admin_required
+def admin_get_courses():
+    db=get_db(); cur=db.cursor()
+    cur.execute("SELECT c.*, t.real_name AS teacher_name FROM courses c LEFT JOIN teachers t ON t.id=c.teacher_id ORDER BY c.term DESC, c.name")
+    courses = []
+    for r in cur.fetchall():
+        cur2 = db.cursor()
+        cur2.execute("SELECT cl.id, cl.name FROM course_classes cc JOIN classes cl ON cl.id=cc.class_id WHERE cc.course_id=%s ORDER BY cl.name", (r['id'],))
+        classes = [{'id': cr['id'], 'name': cr['name']} for cr in cur2.fetchall()]
+        courses.append({**r, 'classes': classes})
+    db.close()
+    return success(courses)
+
+@app.route('/api/admin/courses', methods=['POST'])
+@admin_required
+def admin_create_course():
+    d = request.get_json() or {}
+    name = (d.get('name') or '').strip()
+    term = (d.get('term') or '').strip()
+    teacher_id = d.get('teacher_id')
+    class_ids = d.get('class_ids', [])
+    if not name: return err('课程名称不能为空')
+    if not teacher_id: return err('请选择授课教师')
+    # 生成 ID（支持手动指定）
+    course_id = d.get('id', '').strip() or f'crs_{int(__import__("time").time()*1000)}'
+    db = get_db(); cur = db.cursor()
+    cur.execute("SELECT id FROM courses WHERE id=%s", (course_id,))
+    if cur.fetchone(): db.close(); return err('课程ID已存在')
+    cur.execute("INSERT INTO courses (id, name, term, teacher_id, created_at) VALUES (%s,%s,%s,%s,NOW())",
+                (course_id, name, term, teacher_id))
+    # 批量关联班级
+    for cid in class_ids:
+        cur.execute("INSERT INTO course_classes (course_id, class_id, created_at) VALUES (%s,%s,NOW())",
+                    (course_id, cid))
+    db.commit(); db.close()
+    return success({'id': course_id, 'message': f'课程创建成功，已关联 {len(class_ids)} 个班级'})
+
+@app.route('/api/admin/courses/<course_id>', methods=['PUT'])
+@admin_required
+def admin_update_course(course_id):
+    d = request.get_json() or {}
+    name = (d.get('name') or '').strip()
+    term = (d.get('term') or '').strip()
+    teacher_id = d.get('teacher_id')
+    class_ids = d.get('class_ids', [])
+    if not name: return err('课程名称不能为空')
+    db = get_db(); cur = db.cursor()
+    cur.execute("UPDATE courses SET name=%s, term=%s, teacher_id=%s WHERE id=%s",
+                (name, term, teacher_id, course_id))
+    # 重建班级关联
+    cur.execute("DELETE FROM course_classes WHERE course_id=%s", (course_id,))
+    for cid in class_ids:
+        cur.execute("INSERT INTO course_classes (course_id, class_id, created_at) VALUES (%s,%s,NOW())",
+                    (course_id, cid))
+    db.commit(); db.close()
+    return success({'message': f'课程更新成功，已关联 {len(class_ids)} 个班级'})
+
+@app.route('/api/admin/courses/<course_id>', methods=['DELETE'])
+@admin_required
+def admin_delete_course(course_id):
+    db = get_db(); cur = db.cursor()
+    cur.execute("DELETE FROM course_classes WHERE course_id=%s", (course_id,))
+    cur.execute("DELETE FROM courses WHERE id=%s", (course_id,))
+    db.commit(); db.close()
+    return success()
+
+@app.route('/api/admin/courses/batch', methods=['POST'])
+@admin_required
+def admin_batch_create_courses():
+    """批量开设课程模板：一个课程名 + 多个班级，自动为每个班级创建独立课程"""
+    d = request.get_json() or {}
+    base_name = (d.get('name') or '').strip()
+    term = (d.get('term') or '').strip()
+    teacher_id = d.get('teacher_id')
+    class_ids = d.get('class_ids', [])
+    if not base_name: return err('课程名称不能为空')
+    if not teacher_id: return err('请选择授课教师')
+    if not class_ids: return err('请选择至少一个班级')
+    db = get_db(); cur = db.cursor()
+    created = 0
+    for cid in class_ids:
+        cur.execute("SELECT name FROM classes WHERE id=%s", (cid,))
+        cls = cur.fetchone()
+        course_id = f'crs_{int(__import__("time").time()*1000)}_{created}'
+        course_name = f"{base_name}-{cls['name']}" if len(class_ids) > 1 else base_name
+        try:
+            cur.execute("INSERT INTO courses (id, name, term, teacher_id, created_at) VALUES (%s,%s,%s,%s,NOW())",
+                        (course_id, course_name, term, teacher_id))
+            cur.execute("INSERT INTO course_classes (course_id, class_id, created_at) VALUES (%s,%s,NOW())",
+                        (course_id, cid))
+            created += 1
+        except: pass
+    db.commit(); db.close()
+    return success({'created': created, 'message': f'批量开设 {created} 门课程成功'})
+
 @app.route('/api/admin/class_list', methods=['GET'])
 @admin_required
 def admin_class_list():
@@ -2036,13 +2133,6 @@ def admin_clear_student_accounts():
             errors.append({'sid':sid,'error':str(e)})
     db.close()
     return success({'cleared':cleared,'errors':errors})
-
-@app.route('/api/admin/courses', methods=['GET'])
-@admin_required
-def admin_get_courses():
-    db=get_db(); cur=db.cursor()
-    cur.execute("SELECT c.*,t.real_name as teacher_name FROM courses c JOIN teachers t ON t.id=c.teacher_id ORDER BY c.term DESC,c.name")
-    rows=cur.fetchall(); db.close(); return success(_rows(rows))
 
 @app.route('/api/admin/attendance_logs', methods=['GET'])
 @admin_required
