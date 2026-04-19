@@ -170,6 +170,10 @@ def login():
         user=cur.fetchone(); db.close()
         if not user or not bcrypt.checkpw(password.encode(),user['password'].encode()): return fail('学号或密码错误')
         token=gen_token(user['student_id'],'student',{'student_number':user['student_number']})
+        # 记录活跃日志
+        _db=get_db(); _cur=_db.cursor()
+        _cur.execute("INSERT IGNORE INTO student_login_logs (student_id, login_date) VALUES (%s, CURDATE())",(user['student_id'],))
+        _db.commit(); _db.close()
         return success({'token':token,'user':{'id':user['student_id'],'username':user['student_number'],'name':user.get('name',''),'role':'student'}})
     return err('无效的登录类型')
 
@@ -1603,6 +1607,21 @@ def admin_dashboard():
         'att_dist': att_dist,
         'course_hw': course_hw
     })
+
+@app.route('/api/admin/student_activity', methods=['GET'])
+@admin_required
+def admin_student_activity():
+    db=get_db(); cur=db.cursor()
+    cur.execute("""
+        SELECT login_date, COUNT(*) AS count
+        FROM student_login_logs
+        WHERE login_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+        GROUP BY login_date
+        ORDER BY login_date ASC
+    """)
+    rows = cur.fetchall()
+    db.close()
+    return success([{'date': str(r['login_date']), 'count': r['count']} for r in rows])
 
 @app.route('/api/admin/course_list', methods=['GET'])
 @admin_required

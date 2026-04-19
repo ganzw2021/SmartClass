@@ -376,6 +376,11 @@ export async function getAdminDashboard() {
   return await api.get('/admin/dashboard')
 }
 
+/** 获取学生活跃统计（近7天） */
+export async function getAdminStudentActivity() {
+  return await api.get('/admin/student_activity')
+}
+
 /** 作业统计（管理端） */
 export async function getAdminHomeworkStats(params = {}) {
   return await api.get('/admin/homework_stats', { params })

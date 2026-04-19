@@ -45,12 +45,16 @@
 
     <!-- 第二行 -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <!-- 作业提交数 -->
+      <!-- 学生活跃统计 -->
       <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 lg:col-span-2">
-        <div class="text-sm font-bold text-slate-500 mb-3 border-b border-slate-100 pb-2">各作业提交人数</div>
-        <div ref="hwChartWrap" class="overflow-y-auto" style="max-height:320px;">
-          <div ref="hwChart" :style="{ height: Math.max(280, hwBarH) + 'px' }"></div>
+        <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+          <div class="text-sm font-bold text-slate-500">学生活跃统计（近七天）</div>
+          <div v-if="totalActive > 0"
+               class="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-600">
+            累计 {{ totalActive }} 人次登录
+          </div>
         </div>
+        <div ref="lineChart" style="height:280px;"></div>
       </div>
 
       <!-- 课程作业量 -->
@@ -65,7 +69,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
-import { getAdminDashboard } from '../api.js'
+import { getAdminDashboard, getAdminStudentActivity } from '../api.js'
 
 const emit = defineEmits(['navigate'])
 
@@ -78,24 +82,23 @@ function updateTime() {
 
 const animDone = ref(false)
 const kpiCards = ref([
-  { label: '教 师', key: 'teachers',   value: 0, display: 0, module: 'teachers',            bgClass: 'bg-blue-500' },
-  { label: '学 生', key: 'students',  value: 0, display: 0, module: 'students',           bgClass: 'bg-emerald-500' },
-  { label: '班 级', key: 'classes',   value: 0, display: 0, module: 'classes',            bgClass: 'bg-purple-500' },
+  { label: '教 师', key: 'teachers',    value: 0, display: 0, module: 'teachers',            bgClass: 'bg-blue-500' },
+  { label: '学 生', key: 'students',   value: 0, display: 0, module: 'students',           bgClass: 'bg-emerald-500' },
+  { label: '班 级', key: 'classes',    value: 0, display: 0, module: 'classes',            bgClass: 'bg-purple-500' },
   { label: '课 程', key: 'courses',   value: 0, display: 0, module: null,                bgClass: 'bg-amber-500' },
-  { label: '作 业', key: 'homework', value: 0, display: 0, module: 'homework_stats',     bgClass: 'bg-pink-500' },
-  { label: '提 交', key: 'submissions', value: 0, display: 0, module: 'homework_stats', bgClass: 'bg-teal-500' },
-  { label: '考 勤', key: 'attendance', value: 0, display: 0, module: 'attendance_stats', bgClass: 'bg-sky-500' },
+  { label: '作 业', key: 'homework',  value: 0, display: 0, module: 'homework_stats',     bgClass: 'bg-pink-500' },
+  { label: '提 交', key: 'submissions', value: 0, display: 0, module: 'homework_stats',   bgClass: 'bg-teal-500' },
+  { label: '考 勤', key: 'attendance', value: 0, display: 0, module: 'attendance_stats',  bgClass: 'bg-sky-500' },
 ])
 
 const barChart = ref(null)
 const barChartWrap = ref(null)
 const donutChart = ref(null)
-const hwChart = ref(null)
-const hwChartWrap = ref(null)
+const lineChart = ref(null)
 const polarChart = ref(null)
 let charts = []
 const classBarH = ref(280)
-const hwBarH = ref(280)
+const totalActive = ref(0)
 
 const lightColors = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#ec4899']
 
@@ -153,34 +156,51 @@ function initDonutChart(data) {
   })
 }
 
-function initHwChart(data) {
-  if (!hwChart.value) return
-  const ins = echarts.init(hwChart.value)
+function initLineChart(data) {
+  if (!lineChart.value) return
+  const ins = echarts.init(lineChart.value)
   charts.push(ins)
-  const names = data.map(d => d.name)
+  const dates = data.map(d => {
+    const parts = d.date.split('-')
+    return `${parseInt(parts[1])}/${parseInt(parts[2])}`
+  })
   const values = data.map(d => d.count)
+  totalActive.value = values.reduce((s, v) => s + v, 0)
+
   ins.setOption({
     backgroundColor: 'transparent',
-    grid: { left: 130, right: 60, top: 10, bottom: 40 },
-    xAxis: { type: 'value',
-      axisLabel: { color: '#94a3b8', fontSize: 11 },
-      splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } },
-      axisLine: { lineStyle: { color: '#e2e8f0' } } },
-    yAxis: { type: 'category', data: names, axisLine: { show: false }, axisTick: { show: false },
-      axisLabel: { color: '#475569', fontSize: 10, formatter: v => v.length > 10 ? v.slice(0,10)+'…' : v } },
-    series: [{
-      type: 'bar', data: values, barMaxWidth: 18,
-      itemStyle: {
-        color: new echarts.graphic.LinearGradient(0,0,1,0,[
-          { offset: 0, color: '#8b5cf644' }, { offset: 1, color: '#8b5cf6' }]),
-        borderRadius: [0, 6, 6, 0]
-      },
-      label: { show: true, position: 'right', color: '#64748b', fontSize: 11, formatter: '{c} 人' }
-    }],
+    grid: { left: 50, right: 30, top: 20, bottom: 40 },
     tooltip: {
       backgroundColor: '#fff', borderColor: '#e2e8f0', textStyle: { color: '#334155' },
-      formatter: p => `${names[p.dataIndex]}<br/><b style="color:#8b5cf6">${p.value}</b> 人`
-    }
+      formatter: p => `${dates[p.dataIndex]}<br/><b style="color:#6366f1">${p.value}</b> 人登录`
+    },
+    xAxis: {
+      type: 'category', data: dates,
+      axisLabel: { color: '#94a3b8', fontSize: 11 },
+      axisLine: { lineStyle: { color: '#e2e8f0' } },
+      splitLine: { show: false }
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: { color: '#94a3b8', fontSize: 11 },
+      splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } },
+      axisLine: { show: false }
+    },
+    series: [{
+      type: 'line',
+      data: values,
+      smooth: true,
+      symbol: 'circle',
+      symbolSize: 8,
+      lineStyle: { color: '#6366f1', width: 3 },
+      itemStyle: { color: '#6366f1', borderColor: '#fff', borderWidth: 2 },
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(99,102,241,0.18)' },
+          { offset: 1, color: 'rgba(99,102,241,0.02)' }
+        ])
+      }
+    }]
   })
 }
 
@@ -233,19 +253,22 @@ onMounted(async () => {
   timerId = setInterval(updateTime, 1000)
   window.addEventListener('resize', handleResize)
   try {
-    const res = await getAdminDashboard()
-    const d = res.data
+    const [dashRes, actRes] = await Promise.all([
+      getAdminDashboard(),
+      getAdminStudentActivity()
+    ])
+    const d = dashRes.data
+    const act = actRes.data || []
     kpiCards.value.forEach(card => { card.value = d.total[card.key] || 0 })
     animateCounters()
     await nextTick()
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
     classBarH.value = Math.max(280, d.class_students.length * 38 + 50)
-    hwBarH.value = Math.max(280, d.hw_submissions.length * 38 + 50)
     await nextTick()
-    if (barChart.value)   initBarChart(d.class_students)
-    if (donutChart.value) initDonutChart(d.att_dist.length ? d.att_dist : [{ name:'暂无数据', value:1 }])
-    if (hwChart.value)    initHwChart(d.hw_submissions)
-    if (polarChart.value) initPolarChart(d.course_hw)
+    if (barChart.value)    initBarChart(d.class_students)
+    if (donutChart.value)  initDonutChart(d.att_dist.length ? d.att_dist : [{ name:'暂无数据', value:1 }])
+    if (lineChart.value)   initLineChart(act)
+    if (polarChart.value)  initPolarChart(d.course_hw)
   } catch (e) {
     console.error('看板加载失败', e)
   }
