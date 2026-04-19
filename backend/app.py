@@ -1604,7 +1604,176 @@ def admin_dashboard():
         'course_hw': course_hw
     })
 
-@app.route('/api/admin/teachers', methods=['GET'])
+@app.route('/api/admin/course_list', methods=['GET'])
+@admin_required
+def admin_course_list():
+    db=get_db(); cur=db.cursor()
+    cur.execute("SELECT id, name, term FROM courses ORDER BY term DESC, name")
+    rows = cur.fetchall()
+    db.close()
+    return success([{'id':r['id'],'name':r['name'],'term':r['term']} for r in rows])
+
+@app.route('/api/admin/class_list', methods=['GET'])
+@admin_required
+def admin_class_list():
+    db=get_db(); cur=db.cursor()
+    cur.execute("SELECT id, name FROM classes ORDER BY name")
+    rows = cur.fetchall()
+    db.close()
+    return success([{'id':r['id'],'name':r['name']} for r in rows])
+
+@app.route('/api/admin/homework_stats', methods=['GET'])
+@admin_required
+def admin_homework_stats():
+    course_id = request.args.get('course_id','')
+    class_id  = request.args.get('class_id','')
+    db=get_db(); cur=db.cursor()
+    where = ["h.title NOT LIKE %s","h.title NOT LIKE %s",
+             "h.title NOT LIKE %s","h.title NOT LIKE %s"]
+    params = ['%test%','%测试%','%E2E%','%自动化%']
+    if course_id:
+        where.append("h.course_id=%s"); params.append(course_id)
+    if class_id:
+        where.append("h.class_id=%s"); params.append(class_id)
+    wclause = " AND ".join(where)
+    sql1 = ("SELECT h.id, h.title, h.class_id, cl.name class_name,"
+            " COUNT(hs.id) sub_cnt,"
+            " (SELECT COUNT(*) FROM students WHERE class_id=h.class_id) total_stu,"
+            " AVG(CASE WHEN hs.score IS NOT NULL THEN hs.score ELSE NULL END) avg_score,"
+            " MAX(hs.score) max_score, MIN(hs.score) min_score,"
+            " SUM(CASE WHEN hs.score>=90 THEN 1 ELSE 0 END) excellent,"
+            " SUM(CASE WHEN hs.score>=70 AND hs.score<90 THEN 1 ELSE 0 END) good,"
+            " SUM(CASE WHEN hs.score>=60 AND hs.score<70 THEN 1 ELSE 0 END) pass_cnt,"
+            " SUM(CASE WHEN hs.score IS NOT NULL AND hs.score<60 THEN 1 ELSE 0 END) fail_cnt"
+            " FROM homework h"
+            " LEFT JOIN classes cl ON cl.id=h.class_id"
+            " LEFT JOIN homework_submissions hs ON hs.homework_id=h.id"
+            " WHERE " + wclause +
+            " GROUP BY h.id ORDER BY h.id")
+    cur.execute(sql1, params)
+    rows = cur.fetchall()
+    hw_list = []
+    for r in rows:
+        total_stu = r['total_stu'] or 0
+        sub_cnt = r['sub_cnt'] or 0
+        rate = round(sub_cnt/total_stu*100, 1) if total_stu > 0 else 0
+        avg = round(float(r['avg_score']), 1) if r['avg_score'] is not None else None
+        mx  = round(float(r['max_score']), 1) if r['max_score'] is not None else None
+        mn  = round(float(r['min_score']), 1) if r['min_score'] is not None else None
+        hw_list.append({
+            'id': r['id'], 'title': r['title'], 'class_name': r['class_name'] or '未知班级',
+            'total_stu': total_stu, 'sub_cnt': sub_cnt, 'rate': rate,
+            'avg_score': avg, 'max_score': mx, 'min_score': mn,
+            'dist': {'excellent': int(r['excellent'] or 0), 'good': int(r['good'] or 0),
+                     'pass': int(r['pass_cnt'] or 0), 'fail': int(r['fail_cnt'] or 0)}
+        })
+    # 班级提交率
+    sql2 = ("SELECT cl.id, cl.name,"
+            " SUM((SELECT COUNT(*) FROM homework_submissions WHERE homework_id=h.id)) sub_cnt,"
+            " SUM((SELECT COUNT(*) FROM students WHERE class_id=h.class_id)) total_stu"
+            " FROM homework h"
+            " LEFT JOIN classes cl ON cl.id=h.class_id"
+            " WHERE " + wclause +
+            " GROUP BY cl.id")
+    cur.execute(sql2, params)
+    class_rates = []
+    for r in cur.fetchall():
+        ts = r['total_stu'] or 0
+        sc = r['sub_cnt'] or 0
+        class_rates.append({'name': r['name'] or '未知', 'rate': round(sc/ts*100,1) if ts>0 else 0})
+    total_hw = len(hw_list)
+    total_subs = sum(r['sub_cnt'] for r in hw_list)
+    rates = [r['rate'] for r in hw_list if r['total_stu']>0]
+    avg_rate = round(sum(rates)/len(rates), 1) if rates else 0
+    scores = [r['avg_score'] for r in hw_list if r['avg_score'] is not None]
+    avg_score = round(sum(scores)/len(scores), 1) if scores else 0
+    db.close()
+    return success({'total_hw': total_hw, 'total_subs': total_subs,
+                    'avg_rate': avg_rate, 'avg_score': avg_score,
+                    'list': hw_list, 'class_rates': class_rates})
+
+@app.route('/api/admin/attendance_stats', methods=['GET'])
+@admin_required
+def admin_attendance_stats():
+    course_id = request.args.get('course_id','')
+    class_id  = request.args.get('class_id','')
+    db=get_db(); cur=db.cursor()
+    where = ["1=1"]
+    params = []
+    if course_id:
+        where.append("ar.course_id=%s"); params.append(course_id)
+    if class_id:
+        where.append("ar.class_id=%s"); params.append(class_id)
+    wclause = " AND ".join(where)
+    # 报表明细
+    sql1 = ("SELECT ar.id, ar.course_name, ar.class_name, ar.total_students,"
+            " SUM(CASE WHEN rec.status='signed' THEN 1 ELSE 0 END) signed,"
+            " SUM(CASE WHEN rec.status='late'   THEN 1 ELSE 0 END) late,"
+            " SUM(CASE WHEN rec.status='leave'  THEN 1 ELSE 0 END) leave_cnt,"
+            " SUM(CASE WHEN rec.status='absent' THEN 1 ELSE 0 END) absent"
+            " FROM attendance_reports ar"
+            " LEFT JOIN attendance_student_records rec ON rec.report_id=ar.id"
+            " WHERE " + wclause +
+            " GROUP BY ar.id ORDER BY ar.id")
+    cur.execute(sql1, params)
+    report_rows = cur.fetchall()
+    table_list = []
+    report_series = []
+    total_signed = total_absent = 0
+    for r in report_rows:
+        total = r['total_students'] or 0
+        signed = int(r['signed'] or 0)
+        late   = int(r['late'] or 0)
+        leave  = int(r['leave_cnt'] or 0)
+        absent = int(r['absent'] or 0)
+        rate   = round(signed/total*100,1) if total>0 else 0
+        total_signed += signed; total_absent += absent
+        label = (r['class_name'] or '') + '#' + str(r['id'])
+        table_list.append({'id':r['id'],'course_name':r['course_name'],'class_name':r['class_name'],
+                           'total':total,'signed':signed,'late':late,'leave':leave,'absent':absent,'rate':rate})
+        report_series.append({'label':label,'signed':signed,'late':late,'leave':leave,'absent':absent})
+    # 状态分布
+    sql2 = ("SELECT rec.status, COUNT(*) cnt"
+            " FROM attendance_student_records rec"
+            " JOIN attendance_reports ar ON ar.id=rec.report_id"
+            " WHERE " + wclause +
+            " GROUP BY rec.status")
+    cur.execute(sql2, params)
+    status_map = {'signed':'已签到','absent':'缺勤','late':'迟到','leave':'请假'}
+    dist = [{'name':status_map.get(r['status'],r['status']),'value':r['cnt']} for r in cur.fetchall()]
+    # 班级签到率
+    sql3 = ("SELECT ar.class_name,"
+            " SUM(CASE WHEN rec.status='signed' THEN 1 ELSE 0 END) signed,"
+            " COUNT(rec.id) total"
+            " FROM attendance_student_records rec"
+            " JOIN attendance_reports ar ON ar.id=rec.report_id"
+            " WHERE " + wclause +
+            " GROUP BY ar.class_name")
+    cur.execute(sql3, params)
+    class_rates = []
+    for r in cur.fetchall():
+        rate = round(r['signed']/r['total']*100,1) if r['total']>0 else 0
+        class_rates.append({'name':r['class_name'],'rate':rate})
+    # 缺勤 TOP
+    sql4 = ("SELECT rec.student_name, COUNT(*) cnt"
+            " FROM attendance_student_records rec"
+            " JOIN attendance_reports ar ON ar.id=rec.report_id"
+            " WHERE rec.status='absent' AND " + wclause +
+            " GROUP BY rec.student_name ORDER BY cnt DESC LIMIT 15")
+    cur.execute(sql4, params)
+    absent_top = [{'name':r['student_name'],'count':r['cnt']} for r in cur.fetchall()]
+    total_reports = len(report_rows)
+    rates = [r['rate'] for r in table_list]
+    avg_rate = round(sum(rates)/len(rates),1) if rates else 0
+    db.close()
+    return success({'total_reports':total_reports,'total_signed':total_signed,
+                    'total_absent':total_absent,'avg_rate':avg_rate,
+                    'list':table_list,'dist':dist,'class_rates':class_rates,
+                    'report_series':report_series,'absent_top':absent_top})
+
+
+
+
 @admin_required
 def admin_get_teachers():
     db=get_db(); cur=db.cursor()

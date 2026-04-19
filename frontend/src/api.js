@@ -376,6 +376,26 @@ export async function getAdminDashboard() {
   return await api.get('/admin/dashboard')
 }
 
+/** 作业统计（管理端） */
+export async function getAdminHomeworkStats(params = {}) {
+  return await api.get('/admin/homework_stats', { params })
+}
+
+/** 考勤统计（管理端） */
+export async function getAdminAttendanceStats(params = {}) {
+  return await api.get('/admin/attendance_stats', { params })
+}
+
+/** 管理端课程列表（用于筛选器） */
+export async function getAdminCourseList() {
+  return await api.get('/admin/course_list')
+}
+
+/** 管理端班级列表（用于筛选器） */
+export async function getAdminClassList() {
+  return await api.get('/admin/class_list')
+}
+
 /** 教师管理 */
 export async function getAdminTeachers() {
   return await api.get('/admin/teachers')

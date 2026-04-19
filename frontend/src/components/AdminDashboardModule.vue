@@ -16,68 +16,51 @@
       </div>
     </div>
 
-    <!-- KPI 统计卡片行 -->
+    <!-- KPI 统计卡片行（可点击跳转） -->
     <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-6">
       <div v-for="kpi in kpiCards" :key="kpi.label"
-           class="kpi-card rounded-xl p-3 flex flex-col items-center justify-center gap-1 cursor-default select-none"
-           :style="`border-color:${kpi.color}44; background: linear-gradient(135deg, ${kpi.color}12, ${kpi.color}06);`">
-        <div class="text-3xl font-bold font-mono tabular-nums counter" :style="`color:${kpi.color}; text-shadow: 0 0 12px ${kpi.color}66;`">
+           class="kpi-card rounded-xl p-3 flex flex-col items-center justify-center gap-1 select-none"
+           :class="kpi.module ? 'cursor-pointer' : 'cursor-default'"
+           :style="`border-color:${kpi.color}44; background: linear-gradient(135deg, ${kpi.color}12, ${kpi.color}06);`"
+           @click="kpi.module && $emit('navigate', kpi.module)">
+        <div class="text-3xl font-bold font-mono tabular-nums" :style="`color:${kpi.color}; text-shadow: 0 0 12px ${kpi.color}66;`">
           <span v-if="animDone">{{ kpi.value }}</span>
           <span v-else class="animating">{{ kpi.display }}</span>
         </div>
         <div class="text-xs tracking-widest" style="color:#4a7090;">{{ kpi.label }}</div>
         <div class="w-8 h-0.5 rounded-full mt-1" :style="`background:${kpi.color}88;`"></div>
+        <div v-if="kpi.module" class="text-[9px] mt-0.5 opacity-40" style="color:#7ab4d4;">点击查看 →</div>
       </div>
     </div>
 
     <!-- 主图表区 (3列) -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-      <!-- 班级学生人数 - 横向条形图 -->
+      <!-- 班级学生人数 - 横向条形图（支持 dataZoom 滚动） -->
       <div class="chart-panel rounded-2xl p-4 lg:col-span-2">
         <div class="panel-title">班级学生人数分布</div>
-        <div ref="barChart" style="height:260px;"></div>
+        <div ref="barChart" style="height:300px;"></div>
       </div>
 
       <!-- 考勤状态 - 环形图 -->
       <div class="chart-panel rounded-2xl p-4">
         <div class="panel-title">考勤状态分布</div>
-        <div ref="donutChart" style="height:260px;"></div>
+        <div ref="donutChart" style="height:300px;"></div>
       </div>
     </div>
 
     <!-- 第二行图表 -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
-      <!-- 作业提交数 - 柱状图 -->
+      <!-- 作业提交数 - 横向条形图（支持 dataZoom 滚动） -->
       <div class="chart-panel rounded-2xl p-4 lg:col-span-2">
         <div class="panel-title">各作业提交人数</div>
-        <div ref="hwChart" style="height:220px;"></div>
+        <div ref="hwChart" style="height:300px;"></div>
       </div>
 
       <!-- 课程作业量 - 极坐标 -->
       <div class="chart-panel rounded-2xl p-4">
         <div class="panel-title">课程作业量</div>
-        <div ref="polarChart" style="height:220px;"></div>
+        <div ref="polarChart" style="height:300px;"></div>
       </div>
-    </div>
-
-    <!-- 快捷导航行 -->
-    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-      <a v-for="nav in navItems" :key="nav.label"
-         :href="`?module=${nav.module}`"
-         class="nav-card rounded-xl px-5 py-4 flex items-center gap-4 no-underline group"
-         :style="`border-color:${nav.color}33;`">
-        <div class="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 transition-all group-hover:scale-110"
-             :style="`background:${nav.color}22; border:1px solid ${nav.color}44;`">
-          <span class="text-xl">{{ nav.icon }}</span>
-        </div>
-        <div>
-          <p class="font-semibold text-sm" :style="`color:${nav.color};`">{{ nav.label }}</p>
-          <p class="text-xs" style="color:#3a5070;">{{ nav.desc }}</p>
-        </div>
-        <svg class="ml-auto w-4 h-4 opacity-40 group-hover:opacity-80 transition-opacity" :style="`color:${nav.color};`" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-        </svg>
-      </a>
     </div>
 
     <!-- 扫描线装饰 -->
@@ -89,6 +72,8 @@
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { getAdminDashboard } from '../api.js'
+
+const emit = defineEmits(['navigate'])
 
 // ─── 时间 ───────────────────────────────────────────
 const currentTime = ref('')
@@ -103,20 +88,14 @@ const dashData = ref(null)
 const animDone = ref(false)
 
 const kpiCards = ref([
-  { label: '教 师', value: 0, display: 0, color: '#00c8ff', key: 'teachers' },
-  { label: '学 生', value: 0, display: 0, color: '#00ff9d', key: 'students' },
-  { label: '班 级', value: 0, display: 0, color: '#a78bfa', key: 'classes' },
-  { label: '课 程', value: 0, display: 0, color: '#f59e0b', key: 'courses' },
-  { label: '作 业', value: 0, display: 0, color: '#f472b6', key: 'homework' },
-  { label: '提 交', value: 0, display: 0, color: '#34d399', key: 'submissions' },
-  { label: '考 勤', value: 0, display: 0, color: '#60a5fa', key: 'attendance' },
+  { label: '教 师', value: 0, display: 0, color: '#00c8ff', key: 'teachers', module: 'teachers' },
+  { label: '学 生', value: 0, display: 0, color: '#00ff9d', key: 'students', module: 'students' },
+  { label: '班 级', value: 0, display: 0, color: '#a78bfa', key: 'classes', module: 'classes' },
+  { label: '课 程', value: 0, display: 0, color: '#f59e0b', key: 'courses', module: null },
+  { label: '作 业', value: 0, display: 0, color: '#f472b6', key: 'homework', module: 'homework_stats' },
+  { label: '提 交', value: 0, display: 0, color: '#34d399', key: 'submissions', module: 'homework_stats' },
+  { label: '考 勤', value: 0, display: 0, color: '#60a5fa', key: 'attendance', module: 'attendance_stats' },
 ])
-
-const navItems = [
-  { label: '班级管理', module: 'classes', icon: '🏫', color: '#a78bfa', desc: '查看/编辑班级和学生' },
-  { label: '教师管理', module: 'teachers', icon: '👨‍🏫', color: '#00c8ff', desc: '添加/编辑/删除教师账号' },
-  { label: '学生账号', module: 'students', icon: '🎓', color: '#00ff9d', desc: '批量创建账号/重置密码' },
-]
 
 // ─── 图表 refs ───────────────────────────────────────
 const barChart = ref(null)
@@ -128,15 +107,34 @@ let charts = []
 // 通用科技风主题色
 const techColors = ['#00c8ff','#00ff9d','#a78bfa','#f59e0b','#f472b6','#34d399','#60a5fa','#fb923c','#e879f9','#4ade80']
 
+// ─── 班级学生条形图（支持 dataZoom 内嵌滚动） ────────
 function initBarChart(data) {
   if (!barChart.value) return
   const ins = echarts.init(barChart.value, null, { renderer: 'canvas' })
   charts.push(ins)
-  const names = data.map(d => d.name.replace('2025级','').replace('班',''))
-  const values = data.map(d => d.count)
+  const allNames = data.map(d => d.name.replace('2025级','').replace('班',''))
+  const allValues = data.map(d => d.count)
+  const visibleCount = 8  // 一屏显示条数
+
   ins.setOption({
     backgroundColor: 'transparent',
-    grid: { left: 120, right: 20, top: 12, bottom: 24 },
+    grid: { left: 130, right: 60, top: 12, bottom: 44 },
+    dataZoom: [
+      {
+        type: 'slider',
+        yAxisIndex: 0,
+        orient: 'vertical',
+        right: 8, top: 12, bottom: 44, width: 14,
+        start: 0,
+        end: Math.min(100, Math.round(visibleCount / allValues.length * 100)),
+        filterMode: 'filter',
+        handleStyle: { color: '#00c8ff66' },
+        fillerColor: 'rgba(0,200,255,0.08)',
+        borderColor: '#0d2540',
+        textStyle: { color: '#3a6080', fontSize: 9 }
+      },
+      { type: 'inside', yAxisIndex: 0, orient: 'vertical' }
+    ],
     xAxis: {
       type: 'value',
       axisLine: { lineStyle: { color: '#1a3050' } },
@@ -144,23 +142,20 @@ function initBarChart(data) {
       axisLabel: { color: '#3a6080', fontSize: 11 }
     },
     yAxis: {
-      type: 'category', data: names,
+      type: 'category', data: allNames,
       axisLine: { show: false },
       axisTick: { show: false },
       axisLabel: { color: '#7ab4d4', fontSize: 11 }
     },
     series: [{
       type: 'bar',
-      data: values,
+      data: allValues,
       barMaxWidth: 18,
       itemStyle: {
-        color: (p) => {
-          const grad = new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-            { offset: 0, color: techColors[p.dataIndex % techColors.length] + '44' },
-            { offset: 1, color: techColors[p.dataIndex % techColors.length] }
-          ])
-          return grad
-        },
+        color: (p) => new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+          { offset: 0, color: techColors[p.dataIndex % techColors.length] + '44' },
+          { offset: 1, color: techColors[p.dataIndex % techColors.length] }
+        ]),
         borderRadius: [0, 6, 6, 0]
       },
       label: {
@@ -176,6 +171,7 @@ function initBarChart(data) {
   })
 }
 
+// ─── 考勤饼图 ────────────────────────────────────────
 function initDonutChart(data) {
   if (!donutChart.value) return
   const ins = echarts.init(donutChart.value, null, { renderer: 'canvas' })
@@ -186,7 +182,7 @@ function initDonutChart(data) {
     tooltip: {
       backgroundColor: '#0a1929', borderColor: '#00c8ff44',
       textStyle: { color: '#c0e8ff' },
-      formatter: p => `${p.name}<br/><b style="color:${p.color}">${p.value}</b> 人`
+      formatter: p => `${p.name}<br/><b style="color:${p.color}">${p.value}</b> 人次`
     },
     legend: {
       orient: 'vertical', right: 0, top: 'middle',
@@ -207,45 +203,70 @@ function initDonutChart(data) {
   })
 }
 
+// ─── 各作业提交数条形图（支持 dataZoom 内嵌滚动） ────
 function initHwChart(data) {
   if (!hwChart.value) return
   const ins = echarts.init(hwChart.value, null, { renderer: 'canvas' })
   charts.push(ins)
+  const allNames = data.map(d => d.name)
+  const allValues = data.map(d => d.count)
+  const visibleCount = 8
+
   ins.setOption({
     backgroundColor: 'transparent',
-    grid: { left: 24, right: 16, top: 20, bottom: 40 },
+    grid: { left: 130, right: 60, top: 12, bottom: 44 },
+    dataZoom: [
+      {
+        type: 'slider',
+        yAxisIndex: 0,
+        orient: 'vertical',
+        right: 8, top: 12, bottom: 44, width: 14,
+        start: 0,
+        end: Math.min(100, Math.round(visibleCount / Math.max(allValues.length, 1) * 100)),
+        filterMode: 'filter',
+        handleStyle: { color: '#a78bfa66' },
+        fillerColor: 'rgba(167,139,250,0.08)',
+        borderColor: '#0d2540',
+        textStyle: { color: '#3a6080', fontSize: 9 }
+      },
+      { type: 'inside', yAxisIndex: 0, orient: 'vertical' }
+    ],
     xAxis: {
-      type: 'category',
-      data: data.map(d => d.name.length > 8 ? d.name.slice(0,8)+'…' : d.name),
-      axisLabel: { color: '#3a6080', fontSize: 10, rotate: 25 },
-      axisLine: { lineStyle: { color: '#1a3050' } },
-      axisTick: { show: false }
-    },
-    yAxis: {
       type: 'value',
       axisLabel: { color: '#3a6080', fontSize: 11 },
       splitLine: { lineStyle: { color: '#0d2035', type: 'dashed' } },
-      axisLine: { show: false }
+      axisLine: { lineStyle: { color: '#1a3050' } }
+    },
+    yAxis: {
+      type: 'category', data: allNames,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: {
+        color: '#7ab4d4', fontSize: 10,
+        formatter: v => v.length > 10 ? v.slice(0, 10) + '…' : v
+      }
     },
     series: [{
-      type: 'bar', data: data.map(d => d.count),
-      barMaxWidth: 32,
+      type: 'bar', data: allValues,
+      barMaxWidth: 18,
       itemStyle: {
-        color: (p) => new echarts.graphic.LinearGradient(0, 1, 0, 0, [
-          { offset: 0, color: '#0066ff44' },
-          { offset: 1, color: '#00c8ff' }
+        color: (p) => new echarts.graphic.LinearGradient(0, 0, 1, 0, [
+          { offset: 0, color: '#a78bfa44' },
+          { offset: 1, color: '#a78bfa' }
         ]),
-        borderRadius: [4, 4, 0, 0]
+        borderRadius: [0, 6, 6, 0]
       },
-      label: { show: true, position: 'top', color: '#7ab4d4', fontSize: 10 }
+      label: { show: true, position: 'right', color: '#7ab4d4', fontSize: 11, formatter: '{c} 人' }
     }],
     tooltip: {
       backgroundColor: '#0a1929', borderColor: '#00c8ff44',
-      textStyle: { color: '#c0e8ff' }
+      textStyle: { color: '#c0e8ff' },
+      formatter: p => `${allNames[p.dataIndex]}<br/><b style="color:#a78bfa">${p.value}</b> 人`
     }
   })
 }
 
+// ─── 课程极坐标图 ────────────────────────────────────
 function initPolarChart(data) {
   if (!polarChart.value) return
   const ins = echarts.init(polarChart.value, null, { renderer: 'canvas' })
@@ -280,7 +301,7 @@ function initPolarChart(data) {
 }
 
 // ─── 数字滚动动画 ─────────────────────────────────────
-function animateCounters(targets) {
+function animateCounters() {
   const duration = 1400
   const steps = 40
   const interval = duration / steps
@@ -331,7 +352,6 @@ onMounted(async () => {
     if (polarChart.value) initPolarChart(d.course_hw)
   } catch (e) {
     console.error('看板数据加载失败', e)
-    // 降级：使用 stats 接口
     try {
       const { getAdminStats } = await import('../api.js')
       const res2 = await getAdminStats()
@@ -350,6 +370,7 @@ onUnmounted(() => {
   if (timerId) clearInterval(timerId)
   window.removeEventListener('resize', handleResize)
   charts.forEach(c => c.dispose())
+  charts = []
 })
 </script>
 
@@ -391,16 +412,6 @@ onUnmounted(() => {
   padding-bottom: 6px;
   border-bottom: 1px solid #0d2540;
   text-transform: uppercase;
-}
-
-.nav-card {
-  background: linear-gradient(135deg, #0a1929 0%, #070f1e 100%);
-  border: 1px solid;
-  transition: transform .2s, box-shadow .2s;
-}
-.nav-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0,100,200,0.15);
 }
 
 /* 扫描线 */
