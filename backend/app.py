@@ -1774,6 +1774,7 @@ def admin_attendance_stats():
 
 
 
+@app.route('/api/admin/teachers', methods=['GET'])
 @admin_required
 def admin_get_teachers():
     db=get_db(); cur=db.cursor()
