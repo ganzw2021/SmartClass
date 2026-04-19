@@ -60,7 +60,7 @@
                 <p class="text-xs text-slate-400 mt-1">{{ formatTime(notif.created_at) }}</p>
               </div>
               <!-- 删除按钮 -->
-              <button @click.stop="deleteNotification(notif.id)" 
+              <button @click.stop="handleDeleteNotification(notif.id)" 
                 class="p-1 text-slate-400 hover:text-red-500 transition-colors">
                 ✕
               </button>
@@ -294,10 +294,13 @@ async function handleDeleteNotification(id) {
   try {
     const res = await deleteNotification(id)
     if (res.success) {
-      notifications.value = notifications.value.filter(n => n.id !== id)
-      if (notifications.value.find(n => n.id === id)?.is_read === 0) {
+      // 先检查要删除的通知是否是未读的
+      const target = notifications.value.find(n => n.id === id)
+      if (target && !target.is_read) {
         unreadCount.value = Math.max(0, unreadCount.value - 1)
       }
+      // 再删除通知
+      notifications.value = notifications.value.filter(n => n.id !== id)
       showToast('已删除')
     }
   } catch (e) {

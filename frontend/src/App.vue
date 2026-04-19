@@ -20,7 +20,7 @@
             <div>
               <h1 class="text-lg font-bold text-slate-800 leading-none">江西樟树中医药职业学院</h1>
               <p :class="['text-xs mt-1 font-medium tracking-widest uppercase', isStudentMode ? 'text-blue-600' : isAdminMode ? 'text-indigo-600' : 'text-green-700']">
-                {{ isAdminMode ? '管理端' : isStudentMode ? '学生端' : '教师端' }} v8.5
+                {{ isAdminMode ? '管理端' : isStudentMode ? '学生端' : '教师端' }}
               </p>
             </div>
           </div>
@@ -41,6 +41,11 @@
 
           <div class="flex items-center gap-3">
             <span class="text-sm text-slate-500">{{ teacherUser?.name || teacherUser?.student_name || teacherUser?.username }}</span>
+            <button @click="showPasswordModal = true" class="text-slate-400 hover:text-[#2d6a4f]" title="修改密码">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              </svg>
+            </button>
             <div class="flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-200 text-[10px] font-black uppercase tracking-tighter">
               <span :class="['w-2 h-2 rounded-full', isOnline ? 'bg-green-500' : 'bg-red-400']"></span>
               <span>{{ isOnline ? '在线' : '离线' }}</span>
@@ -67,7 +72,12 @@
             <span class="text-sm font-bold text-slate-800">{{ isAdminMode ? '管理端' : isStudentMode ? '学生端' : '教师端' }}</span>
           </div>
           <div class="flex items-center gap-2">
-            <span class="text-xs text-slate-500 max-w-[100px] truncate">{{ teacherUser?.name || teacherUser?.student_name || teacherUser?.username }}</span>
+            <span class="text-xs text-slate-500 max-w-[80px] truncate">{{ teacherUser?.name || teacherUser?.student_name || teacherUser?.username }}</span>
+            <button @click="showPasswordModal = true" class="text-slate-400 hover:text-[#2d6a4f] p-1" title="修改密码">
+              <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+              </svg>
+            </button>
             <button @click="logout" class="text-slate-400 hover:text-red-500 p-1">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -118,6 +128,52 @@
           </div>
         </div>
       </Teleport>
+
+      <!-- 修改密码弹窗 -->
+      <Teleport to="body">
+        <div v-if="showPasswordModal" class="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-6" @click.self="showPasswordModal = false">
+          <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
+            <div class="flex items-center justify-between mb-6">
+              <h3 class="text-lg font-bold text-slate-800">修改密码</h3>
+              <button @click="showPasswordModal = false" class="text-slate-400 hover:text-slate-600">
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1.5">旧密码</label>
+                <input v-model="passwordForm.old_password" type="password" placeholder="请输入旧密码"
+                  class="w-full border-2 border-slate-100 rounded-xl px-4 py-2.5 outline-none focus:border-[#2d6a4f] transition-colors">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1.5">新密码</label>
+                <input v-model="passwordForm.new_password" type="password" placeholder="请输入新密码"
+                  class="w-full border-2 border-slate-100 rounded-xl px-4 py-2.5 outline-none focus:border-[#2d6a4f] transition-colors">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-1.5">确认新密码</label>
+                <input v-model="passwordForm.confirm_password" type="password" placeholder="请再次输入新密码"
+                  class="w-full border-2 border-slate-100 rounded-xl px-4 py-2.5 outline-none focus:border-[#2d6a4f] transition-colors">
+              </div>
+            </div>
+
+            <div v-if="passwordError" class="mt-3 text-sm text-red-500">{{ passwordError }}</div>
+            <div v-if="passwordSuccess" class="mt-3 text-sm text-green-600">{{ passwordSuccess }}</div>
+
+            <div class="flex gap-3 mt-6">
+              <button @click="showPasswordModal = false" class="flex-1 py-2.5 border-2 border-slate-100 rounded-xl text-slate-600 hover:bg-slate-50 transition-colors">
+                取消
+              </button>
+              <button @click="savePassword" :disabled="saving" class="flex-1 py-2.5 bg-[#2d6a4f] text-white rounded-xl hover:bg-[#245a42] transition-colors disabled:opacity-50">
+                {{ saving ? '保存中...' : '确认修改' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Teleport>
     </template>
   </div>
 </template>
@@ -127,7 +183,7 @@ import { ref, computed, onMounted, markRaw, defineAsyncComponent } from 'vue'
 import TeacherLogin from './components/TeacherLogin.vue'
 import AdminLogin from './components/AdminLogin.vue'
 import StudentLogin from './components/StudentLogin.vue'
-import { getTeacherCourses, getClassStudents } from './api.js'
+import { getTeacherCourses, getClassStudents, changePassword } from './api.js'
 
 // 检测模式（通过入口文件设置的全局标记）
 const isAdminMode = window.__IS_ADMIN__ === true
@@ -281,6 +337,50 @@ function handleLoginSuccess(user) {
   teacherUser.value = user
   if (!isStudentMode) {
     loadCoursesAndClasses()
+  }
+}
+
+// 修改密码弹窗
+const showPasswordModal = ref(false)
+const passwordForm = ref({ old_password: '', new_password: '', confirm_password: '' })
+const passwordError = ref('')
+const passwordSuccess = ref('')
+const saving = ref(false)
+
+async function savePassword() {
+  passwordError.value = ''
+  passwordSuccess.value = ''
+  const { old_password, new_password, confirm_password } = passwordForm.value
+
+  if (!old_password || !new_password || !confirm_password) {
+    passwordError.value = '请填写所有字段'
+    return
+  }
+  if (new_password !== confirm_password) {
+    passwordError.value = '两次输入的新密码不一致'
+    return
+  }
+  if (new_password.length < 6) {
+    passwordError.value = '新密码至少6位'
+    return
+  }
+
+  saving.value = true
+  try {
+    const res = await changePassword(old_password, new_password)
+    if (res.success) {
+      passwordSuccess.value = '密码修改成功！'
+      setTimeout(() => {
+        showPasswordModal.value = false
+        passwordForm.value = { old_password: '', new_password: '', confirm_password: '' }
+      }, 1500)
+    } else {
+      passwordError.value = res.message || '修改失败'
+    }
+  } catch (e) {
+    passwordError.value = e.response?.data?.message || '修改失败，请检查旧密码'
+  } finally {
+    saving.value = false
   }
 }
 

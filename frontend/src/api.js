@@ -100,6 +100,15 @@ export function teacherLogout() {
   localStorage.removeItem('tc_teacher')
 }
 
+/**
+ * 教师修改密码
+ * @param {string} oldPassword - 旧密码
+ * @param {string} newPassword - 新密码
+ */
+export async function changePassword(oldPassword, newPassword) {
+  return await api.post('/auth/change_password', { old_password: oldPassword, new_password: newPassword })
+}
+
 // ============ 班级管理 ============
 
 /**
