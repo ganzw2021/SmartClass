@@ -1,5 +1,5 @@
 <template>
-  <div class="dashboard-root min-h-screen p-4 lg:p-6" style="background: #070d1a;">
+  <div class="dashboard-root min-h-screen p-4 lg:p-6 -mx-6 -mt-6 -mb-6" style="background: #070d1a;">
 
     <!-- 顶部标题栏 -->
     <div class="flex items-center justify-between mb-6">
@@ -86,7 +86,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import { getAdminDashboard } from '../api.js'
 
@@ -129,6 +129,7 @@ let charts = []
 const techColors = ['#00c8ff','#00ff9d','#a78bfa','#f59e0b','#f472b6','#34d399','#60a5fa','#fb923c','#e879f9','#4ade80']
 
 function initBarChart(data) {
+  if (!barChart.value) return
   const ins = echarts.init(barChart.value, null, { renderer: 'canvas' })
   charts.push(ins)
   const names = data.map(d => d.name.replace('2025级','').replace('班',''))
@@ -176,6 +177,7 @@ function initBarChart(data) {
 }
 
 function initDonutChart(data) {
+  if (!donutChart.value) return
   const ins = echarts.init(donutChart.value, null, { renderer: 'canvas' })
   charts.push(ins)
   const colors = { '已签到': '#00ff9d', '缺勤': '#f472b6', '迟到': '#f59e0b', '请假': '#60a5fa' }
@@ -206,6 +208,7 @@ function initDonutChart(data) {
 }
 
 function initHwChart(data) {
+  if (!hwChart.value) return
   const ins = echarts.init(hwChart.value, null, { renderer: 'canvas' })
   charts.push(ins)
   ins.setOption({
@@ -244,6 +247,7 @@ function initHwChart(data) {
 }
 
 function initPolarChart(data) {
+  if (!polarChart.value) return
   const ins = echarts.init(polarChart.value, null, { renderer: 'canvas' })
   charts.push(ins)
   ins.setOption({
@@ -318,8 +322,9 @@ onMounted(async () => {
     })
     animateCounters()
 
-    // 初始化图表
-    await new Promise(r => setTimeout(r, 80))
+    // 等 DOM 更新 + 浏览器绘制完成再初始化图表
+    await nextTick()
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     if (barChart.value)   initBarChart(d.class_students)
     if (donutChart.value) initDonutChart(d.att_dist.length ? d.att_dist : [{ name: '暂无数据', value: 1 }])
     if (hwChart.value)    initHwChart(d.hw_submissions)
