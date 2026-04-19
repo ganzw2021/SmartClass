@@ -476,9 +476,6 @@ export async function clearAdminStudentAccounts(studentIds) {
 }
 
 /** 课程管理 */
-export async function getAdminCourses() {
-  return await api.get('/admin/courses')
-}
 
 /**
  * 更新单个学生分数
@@ -659,8 +656,13 @@ export async function deleteCourseResource(resourceId) {
  * @param {number} resourceId
  */
 export function downloadCourseResource(resourceId) {
-  const token = sessionStorage.getItem('tc_token') || sessionStorage.getItem('tc_student_token')
-  const url = `${api.defaults.baseURL}/resources/download/${resourceId}?token=${token}`
+  const studentToken = sessionStorage.getItem('tc_student_token')
+  const teacherToken = sessionStorage.getItem('tc_token')
+  // 根据是否有学生token判断是学生端还是教师端
+  const token = studentToken || teacherToken
+  const isStudent = !!studentToken
+  const path = isStudent ? '/student/resources/download' : '/resources/download'
+  const url = `${api.defaults.baseURL}${path}/${resourceId}?token=${token}`
   window.open(url, '_blank')
 }
 

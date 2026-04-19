@@ -112,9 +112,17 @@
 
     <!-- 提交作业弹窗 -->
     <Teleport to="body">
-      <div v-if="submitHw" class="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-6" @click.self="submitHw = null">
-        <div class="bg-white rounded-[32px] w-full max-w-lg p-8 shadow-2xl">
-          <h3 class="text-lg font-bold text-slate-800 mb-4">提交作业：{{ submitHw.title }}</h3>
+      <div v-if="submitHw" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6" @click.self="submitHw = null">
+        <div class="bg-white rounded-t-3xl sm:rounded-[32px] w-full sm:max-w-lg sm:p-8 p-5 shadow-2xl overflow-y-auto max-h-[90vh] sm:max-h-[85vh]">
+          <!-- 移动端：顶部拖动条 -->
+          <div class="sm:hidden w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4"></div>
+          
+          <!-- 关闭按钮（移动端右上角） -->
+          <button @click="submitHw = null" class="sm:hidden absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+          
+          <h3 class="text-lg font-bold text-slate-800 mb-4 pr-8 sm:pr-0">提交作业：{{ submitHw.title }}</h3>
 
           <!-- 作业描述 -->
           <div v-if="submitHw.description" class="bg-slate-50 rounded-xl p-4 text-sm text-slate-600 mb-4">
@@ -135,7 +143,7 @@
 
           <div v-if="submitError" class="bg-red-50 text-red-600 p-3 rounded-xl text-sm mb-4">{{ submitError }}</div>
 
-          <div class="flex gap-3">
+          <div class="flex gap-3 mt-6">
             <button @click="submitHw = null" class="flex-1 py-3 border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50">取消</button>
             <button
               @click="doSubmit"
@@ -149,9 +157,17 @@
       </div>
 
       <!-- 作业详情弹窗 -->
-      <div v-if="detailHw" class="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-6" @click.self="detailHw = null">
-        <div class="bg-white rounded-[32px] w-full max-w-lg p-8 shadow-2xl">
-          <h3 class="text-lg font-bold text-slate-800 mb-4">{{ detailHw.title }}</h3>
+      <div v-if="detailHw" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6" @click.self="detailHw = null">
+        <div class="bg-white rounded-t-3xl sm:rounded-[32px] w-full sm:max-w-lg sm:p-8 p-5 shadow-2xl overflow-y-auto max-h-[90vh] sm:max-h-[85vh] relative">
+          <!-- 移动端：顶部拖动条 -->
+          <div class="sm:hidden w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4"></div>
+          
+          <!-- 关闭按钮（移动端右上角） -->
+          <button @click="detailHw = null" class="sm:hidden absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+          
+          <h3 class="text-lg font-bold text-slate-800 mb-4 pr-8 sm:pr-0">{{ detailHw.title }}</h3>
           <div class="space-y-3 text-sm">
             <div class="flex gap-2">
               <span class="text-slate-500">课程：</span><span class="text-slate-700 font-medium">{{ detailHw.course_name }}</span>
@@ -217,7 +233,7 @@
               </div>
             </div>
           </div>
-          <button @click="detailHw = null" class="mt-6 w-full py-3 border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50">关闭</button>
+          <button @click="detailHw = null" class="mt-6 w-full py-3 border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 sm:hidden">关闭</button>
         </div>
       </div>
     </Teleport>

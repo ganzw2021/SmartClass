@@ -846,6 +846,28 @@ def get_student_resources():
     db.close()
     return success(_rows(cur.fetchall()))
 
+@app.route('/api/student/resources/download/<int:rid>', methods=['GET'])
+@student_required
+def student_download_resource(rid):
+    """学生端下载课程资源"""
+    db=get_db(); cur=db.cursor()
+    # 获取学生可选的课程
+    cur.execute("SELECT DISTINCT c.id FROM courses c JOIN course_classes cc ON cc.course_id=c.id JOIN students s ON s.class_id=cc.class_id WHERE s.id=%s",(request.teacher_id,))
+    courses=cur.fetchall()
+    if not courses:
+        db.close(); return err('无权限访问',403)
+    course_ids=[str(c['id']) for c in courses]
+    # 验证资源属于该学生的课程
+    placeholders=','.join(['%s']*len(course_ids))
+    cur.execute(f"SELECT * FROM course_resources WHERE id=%s AND course_id IN ({placeholders})",[rid]+course_ids)
+    r=cur.fetchone()
+    if not r:
+        db.close(); return err('资源不存在或无权限',404)
+    fpath=os.path.join(os.path.dirname(__file__),r['file_path'])
+    db.close()
+    if not os.path.exists(fpath): return err('文件不存在',404)
+    return send_file(fpath,as_attachment=True,download_name=r['file_name'])
+
 @app.route('/api/homework/<int:hid>/submissions', methods=['GET'])
 @teacher_required
 def get_hw_submissions(hid):
@@ -2284,6 +2306,31 @@ def forum_image(filename):
     fp=os.path.join(UPLOAD_DIR,'forum',filename)
     if not os.path.exists(fp): return err('图片不存在',404)
     return send_file(fp)
+
+# ======= 中药数据库API =======
+@app.route('/api/herb/random', methods=['GET'])
+def get_random_herb():
+    """获取随机一味中药"""
+    db=get_db(); cur=db.cursor()
+    cur.execute("SELECT * FROM herbs ORDER BY RAND() LIMIT 1")
+    herb=cur.fetchone()
+    db.close()
+    if not herb: return err('暂无中药数据')
+    return success(_row(herb))
+
+@app.route('/api/herbs', methods=['GET'])
+def get_herbs():
+    """获取中药列表"""
+    db=get_db(); cur=db.cursor()
+    page=int(request.args.get('page',1))
+    page_size=int(request.args.get('page_size',50))
+    offset=(page-1)*page_size
+    cur.execute("SELECT * FROM herbs ORDER BY category,name LIMIT %s OFFSET %s",(page_size,offset))
+    herbs=_rows(cur.fetchall())
+    cur.execute("SELECT COUNT(*) FROM herbs")
+    total=cur.fetchone()['COUNT(*)']
+    db.close()
+    return success({'herbs':herbs,'total':total,'page':page,'page_size':page_size})
 
 # ======= 扫码签到页面 =======
 _SIGN_PAGE_HTML = '''<!DOCTYPE html>

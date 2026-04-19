@@ -9,9 +9,6 @@
         <span class="ml-2 px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-500">{{ courses.length }} 门</span>
       </div>
       <div class="flex gap-2">
-        <button @click="openBatchModal" class="px-4 py-2 bg-purple-500 hover:bg-purple-600 text-white rounded-xl text-sm font-medium transition-all">
-          批量开设
-        </button>
         <button @click="openCreateModal" class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-medium transition-all">
           + 新建课程
         </button>
@@ -134,59 +131,6 @@
       </div>
     </div>
 
-    <!-- ========== 批量开设弹窗 ========== -->
-    <div v-if="showBatchModal" class="fixed inset-0 bg-black/30 flex items-center justify-center z-50" @click.self="showBatchModal=false">
-      <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4">
-        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <div class="font-bold text-slate-800">批量开设课程</div>
-          <button @click="showBatchModal=false" class="text-slate-400 hover:text-slate-600">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-          </button>
-        </div>
-        <div class="px-6 py-4 space-y-4">
-          <div>
-            <label class="block text-sm font-medium text-slate-600 mb-1">课程名称（模板）<span class="text-red-400">*</span></label>
-            <input v-model="batchForm.name" placeholder="例如：中药学" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"/>
-            <div class="text-xs text-slate-400 mt-1">系统将为每个班级创建一门独立课程，课程名自动加上班级后缀</div>
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-slate-600 mb-1">学期</label>
-            <input v-model="batchForm.term" placeholder="例如：2024-2025学年第一学期" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200"/>
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-slate-600 mb-1">授课教师 <span class="text-red-400">*</span></label>
-            <select v-model="batchForm.teacher_id" class="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200">
-              <option value="">请选择教师</option>
-              <option v-for="t in teachers" :key="t.id" :value="t.id">{{ t.real_name || t.username }}</option>
-            </select>
-          </div>
-          <div>
-            <label class="block text-sm font-medium text-slate-600 mb-1">选择班级（可多选）</label>
-            <div class="border border-slate-200 rounded-xl p-3 max-h-48 overflow-y-auto space-y-1">
-              <label class="flex items-center gap-2 py-1">
-                <input type="checkbox" v-model="batchAll" @change="toggleBatchAll" class="w-4 h-4 rounded accent-blue-500"/>
-                <span class="text-sm font-medium text-slate-700">全选</span>
-              </label>
-              <label v-for="cls in allClasses" :key="cls.id"
-                     class="flex items-center gap-2 py-1 cursor-pointer hover:bg-slate-50 rounded px-1">
-                <input type="checkbox" :value="cls.id" v-model="batchForm.class_ids"
-                       class="w-4 h-4 rounded accent-blue-500"/>
-                <span class="text-sm text-slate-700">{{ cls.name }}</span>
-              </label>
-            </div>
-            <div class="text-xs text-slate-400 mt-1">将创建 {{ batchForm.class_ids.length }} 门课程</div>
-          </div>
-        </div>
-        <div class="px-6 py-4 border-t border-slate-100 flex justify-end gap-2">
-          <button @click="showBatchModal=false" class="px-4 py-2 rounded-xl text-sm text-slate-500 hover:bg-slate-100 transition-all">取消</button>
-          <button @click="submitBatch" :disabled="saving || !batchForm.name || !batchForm.teacher_id || !batchForm.class_ids.length"
-                  class="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-purple-300 text-white rounded-xl text-sm font-medium transition-all">
-            {{ saving ? '开设中…' : `确认开设 ${batchForm.class_ids.length} 门课程` }}
-          </button>
-        </div>
-      </div>
-    </div>
-
     <!-- ========== 删除确认弹窗 ========== -->
     <div v-if="showDeleteModal" class="fixed inset-0 bg-black/30 flex items-center justify-center z-50" @click.self="showDeleteModal=false">
       <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6">
@@ -215,7 +159,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { getAdminCourses, createAdminCourse, updateAdminCourse, deleteAdminCourse, batchCreateCourses,
+import { getAdminCourses, createAdminCourse, updateAdminCourse, deleteAdminCourse,
          getAdminTeachers, getAdminClassList } from '../api.js'
 
 const courses = ref([])
@@ -275,32 +219,6 @@ async function submitForm() {
     closeModal()
     await loadData()
   } catch (e) { toast(e.message || '操作失败', 'error') }
-  finally { saving.value = false }
-}
-
-// 批量
-const showBatchModal = ref(false)
-const batchAll = ref(false)
-const batchForm = ref({ name: '', term: '', teacher_id: '', class_ids: [] })
-
-function openBatchModal() {
-  batchForm.value = { name: '', term: '', teacher_id: '', class_ids: [] }
-  batchAll.value = false
-  showBatchModal.value = true
-}
-function toggleBatchAll() {
-  batchForm.value.class_ids = batchAll.value ? allClasses.value.map(c => c.id) : []
-}
-
-async function submitBatch() {
-  if (!batchForm.value.name || !batchForm.value.teacher_id || !batchForm.value.class_ids.length) return
-  saving.value = true
-  try {
-    const r = await batchCreateCourses(batchForm.value)
-    toast(r.data?.message || `成功开设 ${batchForm.value.class_ids.length} 门课程`)
-    showBatchModal.value = false
-    await loadData()
-  } catch (e) { toast(e.message || '批量开设失败', 'error') }
   finally { saving.value = false }
 }
 

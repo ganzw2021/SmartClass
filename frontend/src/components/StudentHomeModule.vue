@@ -144,47 +144,67 @@
     </div>
 
     <!-- 编辑签名弹窗 -->
-    <div v-if="showEditModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showEditModal = false">
-      <div class="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
-        <h3 class="text-lg font-bold text-slate-800 mb-4">编辑个性签名</h3>
-        <textarea v-model="editForm.bio"
-          class="w-full border border-slate-200 rounded-xl p-3 text-slate-700 focus:border-blue-400 outline-none resize-none"
-          rows="3" placeholder="介绍一下自己..."></textarea>
-        <div class="flex gap-3 mt-4">
-          <button @click="showEditModal = false" class="flex-1 py-2 text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200">取消</button>
-          <button @click="saveProfile" :disabled="saving" class="flex-1 py-2 text-white bg-blue-500 rounded-xl hover:bg-blue-600 disabled:opacity-50">
-            {{ saving ? '保存中...' : '保存' }}
-          </button>
+    <Teleport to="body">
+      <div v-if="showEditModal" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6" @click.self="showEditModal = false">
+        <div class="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md sm:p-6 p-5 shadow-2xl">
+          <!-- 移动端顶部拖动条 -->
+          <div class="sm:hidden w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4"></div>
+          
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-slate-800">编辑个性签名</h3>
+            <button @click="showEditModal = false" class="sm:hidden w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
+          <textarea v-model="editForm.bio"
+            class="w-full border border-slate-200 rounded-xl p-3 text-slate-700 focus:border-blue-400 outline-none resize-none"
+            rows="3" placeholder="介绍一下自己..."></textarea>
+          <div class="flex gap-3 mt-4">
+            <button @click="showEditModal = false" class="flex-1 py-2 text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200">取消</button>
+            <button @click="saveProfile" :disabled="saving" class="flex-1 py-2 text-white bg-blue-500 rounded-xl hover:bg-blue-600 disabled:opacity-50">
+              {{ saving ? '保存中...' : '保存' }}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </Teleport>
 
     <!-- 修改密码弹窗 -->
-    <div v-if="showPasswordModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50" @click.self="showPasswordModal = false">
-      <div class="bg-white rounded-2xl p-6 w-full max-w-md mx-4">
-        <h3 class="text-lg font-bold text-slate-800 mb-4">修改密码</h3>
-        <div class="space-y-3">
-          <div>
-            <label class="block text-sm text-slate-600 mb-1">旧密码</label>
-            <input v-model="passwordForm.old_password" type="password"
-              class="w-full border border-slate-200 rounded-xl p-3 text-slate-700 focus:border-blue-400 outline-none"
-              placeholder="请输入旧密码" />
+    <Teleport to="body">
+      <div v-if="showPasswordModal" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6" @click.self="showPasswordModal = false">
+        <div class="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md sm:p-6 p-5 shadow-2xl">
+          <!-- 移动端顶部拖动条 -->
+          <div class="sm:hidden w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4"></div>
+          
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-bold text-slate-800">修改密码</h3>
+            <button @click="showPasswordModal = false" class="sm:hidden w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
           </div>
-          <div>
-            <label class="block text-sm text-slate-600 mb-1">新密码</label>
-            <input v-model="passwordForm.new_password" type="password"
-              class="w-full border border-slate-200 rounded-xl p-3 text-slate-700 focus:border-blue-400 outline-none"
-              placeholder="请输入新密码" />
+          <div class="space-y-3">
+            <div>
+              <label class="block text-sm text-slate-600 mb-1">旧密码</label>
+              <input v-model="passwordForm.old_password" type="password"
+                class="w-full border border-slate-200 rounded-xl p-3 text-slate-700 focus:border-blue-400 outline-none"
+                placeholder="请输入旧密码" />
+            </div>
+            <div>
+              <label class="block text-sm text-slate-600 mb-1">新密码</label>
+              <input v-model="passwordForm.new_password" type="password"
+                class="w-full border border-slate-200 rounded-xl p-3 text-slate-700 focus:border-blue-400 outline-none"
+                placeholder="请输入新密码" />
+            </div>
           </div>
-        </div>
-        <div class="flex gap-3 mt-4">
-          <button @click="showPasswordModal = false" class="flex-1 py-2 text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200">取消</button>
-          <button @click="savePassword" :disabled="saving" class="flex-1 py-2 text-white bg-blue-500 rounded-xl hover:bg-blue-600 disabled:opacity-50">
-            {{ saving ? '保存中...' : '保存' }}
-          </button>
+          <div class="flex gap-3 mt-4">
+            <button @click="showPasswordModal = false" class="flex-1 py-2 text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200">取消</button>
+            <button @click="savePassword" :disabled="saving" class="flex-1 py-2 text-white bg-blue-500 rounded-xl hover:bg-blue-600 disabled:opacity-50">
+              {{ saving ? '保存中...' : '保存' }}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </Teleport>
 
     <!-- Toast提示 -->
     <div v-if="toast.show" :class="['fixed bottom-20 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full text-white text-sm shadow-lg z-50',
