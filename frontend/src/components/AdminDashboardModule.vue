@@ -31,7 +31,9 @@
       <!-- 班级学生人数 -->
       <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 lg:col-span-2">
         <div class="text-sm font-bold text-slate-500 mb-3 border-b border-slate-100 pb-2">班级学生人数分布</div>
-        <div ref="barChart" style="height:280px;"></div>
+        <div ref="barChartWrap" class="overflow-y-auto" style="max-height:320px;">
+          <div ref="barChart" :style="{ height: Math.max(280, classBarH) + 'px' }"></div>
+        </div>
       </div>
 
       <!-- 考勤状态 -->
@@ -46,7 +48,9 @@
       <!-- 作业提交数 -->
       <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 lg:col-span-2">
         <div class="text-sm font-bold text-slate-500 mb-3 border-b border-slate-100 pb-2">各作业提交人数</div>
-        <div ref="hwChart" style="height:280px;"></div>
+        <div ref="hwChartWrap" class="overflow-y-auto" style="max-height:320px;">
+          <div ref="hwChart" :style="{ height: Math.max(280, hwBarH) + 'px' }"></div>
+        </div>
       </div>
 
       <!-- 课程作业量 -->
@@ -84,10 +88,14 @@ const kpiCards = ref([
 ])
 
 const barChart = ref(null)
+const barChartWrap = ref(null)
 const donutChart = ref(null)
 const hwChart = ref(null)
+const hwChartWrap = ref(null)
 const polarChart = ref(null)
 let charts = []
+const classBarH = ref(280)
+const hwBarH = ref(280)
 
 const lightColors = ['#6366f1','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316','#ec4899']
 
@@ -97,23 +105,15 @@ function initBarChart(data) {
   charts.push(ins)
   const names = data.map(d => d.name)
   const values = data.map(d => d.count)
-  const visibleCount = 6
   ins.setOption({
     backgroundColor: 'transparent',
     grid: { left: 130, right: 60, top: 10, bottom: 40 },
-    dataZoom: [
-      { type: 'slider', yAxisIndex: 0, orient: 'vertical', right: 6, top: 10, bottom: 40, width: 12,
-        start: 0, end: Math.min(100, Math.round(visibleCount / Math.max(values.length,1) * 100)),
-        handleStyle: { color: '#6366f144' }, fillerColor: 'rgba(99,102,241,0.06)',
-        borderColor: '#e2e8f0', textStyle: { color: '#94a3b8', fontSize: 9 } },
-      { type: 'inside', yAxisIndex: 0, orient: 'vertical' }
-    ],
     xAxis: { type: 'value',
       axisLabel: { color: '#94a3b8', fontSize: 11 },
       splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } },
       axisLine: { lineStyle: { color: '#e2e8f0' } } },
     yAxis: { type: 'category', data: names, axisLine: { show: false }, axisTick: { show: false },
-      axisLabel: { color: '#475569', fontSize: 11 } },
+      axisLabel: { color: '#475569', fontSize: 11, formatter: v => v.length > 10 ? v.slice(0,10)+'…' : v } },
     series: [{
       type: 'bar', data: values, barMaxWidth: 18,
       itemStyle: {
@@ -159,17 +159,9 @@ function initHwChart(data) {
   charts.push(ins)
   const names = data.map(d => d.name)
   const values = data.map(d => d.count)
-  const visibleCount = 6
   ins.setOption({
     backgroundColor: 'transparent',
     grid: { left: 130, right: 60, top: 10, bottom: 40 },
-    dataZoom: [
-      { type: 'slider', yAxisIndex: 0, orient: 'vertical', right: 6, top: 10, bottom: 40, width: 12,
-        start: 0, end: Math.min(100, Math.round(visibleCount / Math.max(values.length,1) * 100)),
-        handleStyle: { color: '#8b5cf644' }, fillerColor: 'rgba(139,92,246,0.06)',
-        borderColor: '#e2e8f0', textStyle: { color: '#94a3b8', fontSize: 9 } },
-      { type: 'inside', yAxisIndex: 0, orient: 'vertical' }
-    ],
     xAxis: { type: 'value',
       axisLabel: { color: '#94a3b8', fontSize: 11 },
       splitLine: { lineStyle: { color: '#f1f5f9', type: 'dashed' } },
@@ -247,6 +239,9 @@ onMounted(async () => {
     animateCounters()
     await nextTick()
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))
+    classBarH.value = Math.max(280, d.class_students.length * 38 + 50)
+    hwBarH.value = Math.max(280, d.hw_submissions.length * 38 + 50)
+    await nextTick()
     if (barChart.value)   initBarChart(d.class_students)
     if (donutChart.value) initDonutChart(d.att_dist.length ? d.att_dist : [{ name:'暂无数据', value:1 }])
     if (hwChart.value)    initHwChart(d.hw_submissions)
