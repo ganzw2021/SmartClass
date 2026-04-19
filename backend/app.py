@@ -1566,11 +1566,11 @@ def admin_dashboard():
     cur.execute("SELECT COUNT(*) as v FROM homework WHERE title NOT LIKE '%test%' AND title NOT LIKE '%测试%' AND title NOT LIKE '%E2E%' AND title NOT LIKE '%自动化%'"); hw_total=cur.fetchone()['v']
     cur.execute("SELECT COUNT(*) as v FROM homework_submissions"); subs_total=cur.fetchone()['v']
     cur.execute("SELECT COUNT(*) as v FROM attendance_reports"); att_total=cur.fetchone()['v']
-    # 各班级学生数 TOP 10
+    # 各班级学生数
     cur.execute("""
         SELECT cl.name, COUNT(s.id) cnt
         FROM classes cl LEFT JOIN students s ON s.class_id=cl.id
-        GROUP BY cl.id ORDER BY cnt DESC LIMIT 10
+        GROUP BY cl.id ORDER BY cnt DESC
     """)
     class_students = [{'name': r['name'], 'count': r['cnt']} for r in cur.fetchall()]
     # 作业提交数（过滤测试）
@@ -1579,7 +1579,7 @@ def admin_dashboard():
         FROM homework h LEFT JOIN homework_submissions hs ON hs.homework_id=h.id
         WHERE h.title NOT LIKE '%test%' AND h.title NOT LIKE '%测试%'
           AND h.title NOT LIKE '%E2E%' AND h.title NOT LIKE '%自动化%'
-        GROUP BY h.id ORDER BY cnt DESC LIMIT 10
+        GROUP BY h.id ORDER BY cnt DESC
     """)
     hw_submissions = [{'name': r['title'], 'count': r['cnt']} for r in cur.fetchall()]
     # 考勤状态分布
