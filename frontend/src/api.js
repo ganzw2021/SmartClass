@@ -371,6 +371,11 @@ export async function getAdminStats() {
   return await api.get('/admin/stats')
 }
 
+/** 获取看板详细统计数据 */
+export async function getAdminDashboard() {
+  return await api.get('/admin/dashboard')
+}
+
 /** 教师管理 */
 export async function getAdminTeachers() {
   return await api.get('/admin/teachers')

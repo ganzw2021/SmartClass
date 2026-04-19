@@ -1554,6 +1554,56 @@ def admin_stats():
     db.close()
     return success({'teachers':tc,'students':sc,'classes':cc,'courses':coc})
 
+@app.route('/api/admin/dashboard', methods=['GET'])
+@admin_required
+def admin_dashboard():
+    db=get_db(); cur=db.cursor()
+    # 基础统计
+    cur.execute("SELECT COUNT(*) as v FROM teachers"); teachers=cur.fetchone()['v']
+    cur.execute("SELECT COUNT(*) as v FROM students"); students=cur.fetchone()['v']
+    cur.execute("SELECT COUNT(*) as v FROM classes"); classes=cur.fetchone()['v']
+    cur.execute("SELECT COUNT(*) as v FROM courses"); courses=cur.fetchone()['v']
+    cur.execute("SELECT COUNT(*) as v FROM homework WHERE title NOT LIKE '%test%' AND title NOT LIKE '%测试%' AND title NOT LIKE '%E2E%' AND title NOT LIKE '%自动化%'"); hw_total=cur.fetchone()['v']
+    cur.execute("SELECT COUNT(*) as v FROM homework_submissions"); subs_total=cur.fetchone()['v']
+    cur.execute("SELECT COUNT(*) as v FROM attendance_reports"); att_total=cur.fetchone()['v']
+    # 各班级学生数 TOP 10
+    cur.execute("""
+        SELECT cl.name, COUNT(s.id) cnt
+        FROM classes cl LEFT JOIN students s ON s.class_id=cl.id
+        GROUP BY cl.id ORDER BY cnt DESC LIMIT 10
+    """)
+    class_students = [{'name': r['name'], 'count': r['cnt']} for r in cur.fetchall()]
+    # 作业提交数（过滤测试）
+    cur.execute("""
+        SELECT h.title, COUNT(hs.id) cnt
+        FROM homework h LEFT JOIN homework_submissions hs ON hs.homework_id=h.id
+        WHERE h.title NOT LIKE '%test%' AND h.title NOT LIKE '%测试%'
+          AND h.title NOT LIKE '%E2E%' AND h.title NOT LIKE '%自动化%'
+        GROUP BY h.id ORDER BY cnt DESC LIMIT 10
+    """)
+    hw_submissions = [{'name': r['title'], 'count': r['cnt']} for r in cur.fetchall()]
+    # 考勤状态分布
+    cur.execute("SELECT status, COUNT(*) cnt FROM attendance_student_records GROUP BY status")
+    att_rows = cur.fetchall()
+    status_map = {'signed':'已签到','absent':'缺勤','late':'迟到','leave':'请假'}
+    att_dist = [{'name': status_map.get(r['status'], r['status']), 'value': r['cnt']} for r in att_rows]
+    # 各课程作业数
+    cur.execute("""
+        SELECT c.name, COUNT(h.id) cnt
+        FROM courses c LEFT JOIN homework h ON h.course_id=c.id
+        GROUP BY c.id
+    """)
+    course_hw = [{'name': r['name'], 'count': r['cnt']} for r in cur.fetchall()]
+    db.close()
+    return success({
+        'total': {'teachers': teachers, 'students': students, 'classes': classes,
+                  'courses': courses, 'homework': hw_total, 'submissions': subs_total, 'attendance': att_total},
+        'class_students': class_students,
+        'hw_submissions': hw_submissions,
+        'att_dist': att_dist,
+        'course_hw': course_hw
+    })
+
 @app.route('/api/admin/teachers', methods=['GET'])
 @admin_required
 def admin_get_teachers():
