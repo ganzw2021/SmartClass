@@ -1823,7 +1823,7 @@ def admin_dashboard():
     # 考勤状态分布
     cur.execute("SELECT status, COUNT(*) cnt FROM attendance_student_records GROUP BY status")
     att_rows = cur.fetchall()
-    status_map = {'signed':'已签到','absent':'缺勤','late':'迟到','leave':'请假'}
+    status_map = {'signed':'已签到','absent':'缺勤','late':'迟到','leave_sick':'病假','leave_personal':'事假','early_leave':'早退'}
     att_dist = [{'name': status_map.get(r['status'], r['status']), 'value': r['cnt']} for r in att_rows]
     # 各课程作业数
     cur.execute("""
@@ -2089,7 +2089,7 @@ def admin_attendance_stats():
             " WHERE " + wclause +
             " GROUP BY rec.status")
     cur.execute(sql2, params)
-    status_map = {'signed':'已签到','absent':'缺勤','late':'迟到','leave':'请假'}
+    status_map = {'signed':'已签到','absent':'缺勤','late':'迟到','leave_sick':'病假','leave_personal':'事假','early_leave':'早退'}
     dist = [{'name':status_map.get(r['status'],r['status']),'value':r['cnt']} for r in cur.fetchall()]
     # 班级签到率
     sql3 = ("SELECT ar.class_name,"
