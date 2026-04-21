@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """智慧课堂后端 Flask API - 重建版 2026-04-14"""
-import os, sys, json, time, uuid, secrets, threading, subprocess
+import os, sys, json, time, uuid, secrets, threading, subprocess, logging
 from datetime import datetime, timedelta
 from functools import wraps
 from decimal import Decimal
@@ -11,9 +11,23 @@ from flask_cors import CORS
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_DIR = os.path.join(BASE_DIR, 'uploads')
+LOG_DIR = os.path.join(BASE_DIR, 'logs')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
 for d in ['homework','submissions','grades','forum']:
     os.makedirs(os.path.join(UPLOAD_DIR, d), exist_ok=True)
+
+# ---- 日志配置 ----
+_log_file = os.path.join(LOG_DIR, 'app.log')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler(_log_file, encoding='utf-8'),
+        logging.StreamHandler(sys.stdout),
+    ]
+)
+logger = logging.getLogger('smartclass')
 
 DB_CONFIG = {
     'host':'127.0.0.1','port':3306,'user':'root','password':'Root@123456',
@@ -336,15 +350,157 @@ def save_score_config():
     db.close(); return success()
 
 # ======= 考勤 =======
-_att_sessions={}
-_scan_tokens={}   # 扫码令牌：10秒内扫码有效，超时需重新扫码
-_sign_tokens={}   # 签到令牌：学生进入页面后分配，15秒内必须提交
-_device_sessions={}  # 设备指纹 → {course_id, class_id, session_key}，同一设备本轮次只能签到一次
+_att_sessions={}   # 内存会话：session_key → {course_id, class_id, teacher_id, start_time, active}
+                   # signed_names 从 attendance_records DB 实时查询，不再存内存
 
-def _clean_tokens():
-    now=time.time()
-    for k in [k for k,v in list(_scan_tokens.items()) if v['expire_at']<now]: del _scan_tokens[k]
-    for k in [k for k,v in list(_sign_tokens.items()) if v['expire_at']<now]: del _sign_tokens[k]
+# ── 数据库 token 表（MEMORY 引擎，所有 worker 共享）──
+def _init_token_tables():
+    """启动时初始化 MEMORY 表，create table if not exists"""
+    db = get_db(); cur = db.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS att_tokens (
+                token      VARCHAR(64) PRIMARY KEY,
+                token_type ENUM('scan','sign') NOT NULL,
+                course_id  VARCHAR(32),
+                class_id   VARCHAR(32),
+                session_key VARCHAR(256),
+                device_fp  VARCHAR(128),
+                expire_at  BIGINT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_session_key (session_key),
+                INDEX idx_expire (expire_at)
+            ) ENGINE=MEMORY
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS att_device_sessions (
+                device_fp  VARCHAR(128) PRIMARY KEY,
+                course_id  VARCHAR(32),
+                class_id   VARCHAR(32),
+                session_key VARCHAR(256)
+            ) ENGINE=MEMORY
+        """)
+        db.commit()
+        logger.info("[考勤] att_tokens / att_device_sessions 初始化完成")
+    finally:
+        cur.close(); db.close()
+
+def _db_scan_token_create(token, cid, clid, expire_at):
+    """生成扫码令牌（写入 DB + 内存备查）"""
+    db = get_db(); cur = db.cursor()
+    try:
+        cur.execute("DELETE FROM att_tokens WHERE token=%s AND token_type='scan'", (token,))
+        cur.execute(
+            "INSERT INTO att_tokens (token,token_type,course_id,class_id,expire_at) VALUES (%s,'scan',%s,%s,%s)",
+            (token, cid, clid, expire_at)
+        )
+        db.commit()
+    finally:
+        cur.close(); db.close()
+
+def _db_scan_token_get(token):
+    """查询扫码令牌是否存在且未过期"""
+    db = get_db(); cur = db.cursor()
+    try:
+        cur.execute(
+            "SELECT course_id,class_id FROM att_tokens WHERE token=%s AND token_type='scan' AND expire_at>%s",
+            (token, int(time.time()))
+        )
+        r = cur.fetchone()
+        return r
+    finally:
+        cur.close(); db.close()
+
+def _db_scan_token_del(token):
+    """消耗扫码令牌"""
+    db = get_db(); cur = db.cursor()
+    try:
+        cur.execute("DELETE FROM att_tokens WHERE token=%s AND token_type='scan'", (token,))
+        db.commit()
+    finally:
+        cur.close(); db.close()
+
+def _db_sign_token_create(sign_token, cid, clid, sk, device_fp, expire_at):
+    """生成签到令牌"""
+    db = get_db(); cur = db.cursor()
+    try:
+        cur.execute("DELETE FROM att_tokens WHERE token=%s AND token_type='sign'", (sign_token,))
+        cur.execute(
+            "INSERT INTO att_tokens (token,token_type,course_id,class_id,session_key,device_fp,expire_at) VALUES (%s,'sign',%s,%s,%s,%s,%s)",
+            (sign_token, cid, clid, sk, device_fp, expire_at)
+        )
+        db.commit()
+    finally:
+        cur.close(); db.close()
+
+def _db_sign_token_get(sign_token):
+    """查询签到令牌"""
+    db = get_db(); cur = db.cursor()
+    try:
+        cur.execute(
+            "SELECT course_id,class_id,session_key,device_fp FROM att_tokens WHERE token=%s AND token_type='sign' AND expire_at>%s",
+            (sign_token, int(time.time()))
+        )
+        return cur.fetchone()
+    finally:
+        cur.close(); db.close()
+
+def _db_sign_token_del(sign_token):
+    """消耗签到令牌"""
+    db = get_db(); cur = db.cursor()
+    try:
+        cur.execute("DELETE FROM att_tokens WHERE token=%s AND token_type='sign'", (sign_token,))
+        db.commit()
+    finally:
+        cur.close(); db.close()
+
+def _db_device_lock(device_fp, cid, clid, sk):
+    """设备指纹加锁"""
+    db = get_db(); cur = db.cursor()
+    try:
+        cur.execute(
+            "INSERT INTO att_device_sessions (device_fp,course_id,class_id,session_key) VALUES (%s,%s,%s,%s)",
+            (device_fp, cid, clid, sk)
+        )
+        db.commit()
+    except pymysql.err.IntegrityError:
+        db.rollback()
+    finally:
+        cur.close(); db.close()
+
+def _db_device_check(device_fp, sk):
+    """检查设备是否已签到本轮次"""
+    db = get_db(); cur = db.cursor()
+    try:
+        cur.execute(
+            "SELECT session_key FROM att_device_sessions WHERE device_fp=%s",
+            (device_fp,)
+        )
+        r = cur.fetchone()
+        return r
+    finally:
+        cur.close(); db.close()
+
+def _db_device_unlock_course(cid, clid):
+    """清除本课程+班级的所有设备锁"""
+    db = get_db(); cur = db.cursor()
+    try:
+        cur.execute("DELETE FROM att_device_sessions WHERE course_id=%s AND class_id=%s", (cid, clid))
+        db.commit()
+    finally:
+        cur.close(); db.close()
+
+def _db_signed_names(sk):
+    """从数据库实时查询已签到名单（替代内存 signed_names set）"""
+    db = get_db(); cur = db.cursor()
+    try:
+        cur.execute(
+            "SELECT DISTINCT student_name FROM attendance_records WHERE session_key LIKE %s",
+            (sk + '%',)
+        )
+        return [r['student_name'] for r in cur.fetchall()]
+    finally:
+        cur.close(); db.close()
 
 @app.route('/api/attendance/start', methods=['POST'])
 @teacher_required
@@ -353,46 +509,42 @@ def att_start():
     cid=str(d.get('course_id','')); clid=str(d.get('class_id',''))
     token=secrets.token_hex(8); ts=int(time.time()//15)
     sk=f"{cid}:{clid}:{token}:{ts}"
-    # 每次开启签到：清空旧session + 设备锁，释放所有设备
+    # 每次开启签到：清空旧 session
     for k in list(_att_sessions.keys()):
         if _att_sessions[k]['course_id']==cid and _att_sessions[k]['class_id']==clid: _att_sessions[k]['active']=False
-    _att_sessions[sk]={'_sk':sk,'course_id':cid,'class_id':clid,'teacher_id':request.teacher_id,'start_time':datetime.now(),'signed_names':set(),'active':True}
-    # 清除本课程+班级的设备锁记录（教师可重新分配设备）
-    for k in list(_device_sessions.keys()):
-        v = _device_sessions[k]
-        if v['course_id']==cid and v['class_id']==clid: del _device_sessions[k]
-    _clean_tokens()
-    st=secrets.token_hex(16); _scan_tokens[st]={'course_id':cid,'class_id':clid,'expire_at':time.time()+10}
+    _att_sessions[sk]={'_sk':sk,'course_id':cid,'class_id':clid,'teacher_id':request.teacher_id,'start_time':datetime.now(),'active':True}
+    # 清除本课程+班级的设备锁（教师可重新分配设备）
+    _db_device_unlock_course(cid, clid)
+    st=secrets.token_hex(16); _db_scan_token_create(st, cid, clid, int(time.time())+10)
     return success({'session_key':sk,'qr_url':f"/sign?cid={cid}&clid={clid}&t={int(time.time()*1000)}&token={st}"})
 
 @app.route('/api/attendance/qr', methods=['GET'])
 @teacher_required
 def att_qr():
     cid=request.args.get('course_id',''); clid=request.args.get('class_id','')
-    _clean_tokens()
-    # ── 防止后端重启后 _att_sessions 被清空导致学生扫码失败 ──
-    # 若本课程+班级已有活跃会话（可能被重启清掉了）则自动重建
-    has_active = any(
-        v['course_id']==cid and v['class_id']==clid and v.get('active')
-        for v in _att_sessions.values()
-    )
-    if not has_active:
-        # 重建 session（全新，不继承旧名单）
+    # 复用同一个 session_key（每次刷新 QR，session_key 不变）
+    active_sk = None
+    for sk, sv in _att_sessions.items():
+        if sv['course_id']==cid and sv['class_id']==clid and sv.get('active'):
+            active_sk = sk
+            break
+    if not active_sk:
         token=secrets.token_hex(8); ts=int(time.time()//15)
-        sk=f"{cid}:{clid}:{token}:{ts}"
-        _att_sessions[sk]={'course_id':cid,'class_id':clid,'teacher_id':request.teacher_id,'start_time':datetime.now(),'signed_names':set(),'active':True}
-    st=secrets.token_hex(16); _scan_tokens[st]={'course_id':cid,'class_id':clid,'expire_at':time.time()+10}
-    return success({'qr_url':f"/sign?cid={cid}&clid={clid}&t={int(time.time()*1000)}&token={st}",'token':st})
+        active_sk=f"{cid}:{clid}:{token}:{ts}"
+        _att_sessions[active_sk]={'course_id':cid,'class_id':clid,'teacher_id':request.teacher_id,'start_time':datetime.now(),'active':True}
+    st=secrets.token_hex(16); _db_scan_token_create(st, cid, clid, int(time.time())+10)
+    return success({'qr_url':f"/sign?cid={cid}&clid={clid}&t={int(time.time()*1000)}&token={st}",'token':st,'session_key':active_sk})
 
 @app.route('/api/attendance/current_session', methods=['GET'])
 @teacher_required
 def att_current_session():
-    """返回当前活跃会话的已签到名单（供前端计算未签到）"""
+    """返回当前活跃会话的已签到名单（从 DB 实时查询）"""
     cid = request.args.get('course_id', ''); clid = request.args.get('class_id', '')
     if not cid or not clid: return err('course_id 和 class_id 不能为空')
     for sk, sv in _att_sessions.items():
         if sv['course_id'] == cid and sv['class_id'] == clid and sv.get('active'):
-            return success({'session_key': sk, 'signed_names': list(sv.get('signed_names', set()))})
+            signed_names = _db_signed_names(sk)
+            return success({'session_key': sk, 'signed_names': signed_names})
     return err('无进行中的签到', 404)
 
 @app.route('/api/attendance/reset', methods=['POST'])
@@ -442,10 +594,7 @@ def att_manual():
     db=get_db(); cur=db.cursor()
     cur.execute("INSERT INTO attendance_records (session_key,course_id,class_id,student_name,sign_time) VALUES (%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE sign_time=VALUES(sign_time)",(record_sk,cid,clid,name,datetime.now()))
     db.close()
-    # 更新内存中的已签到名单
-    for v in _att_sessions.values():
-        if v['course_id']==cid and v['class_id']==clid and v.get('active'):
-            v['signed_names'].add(name)
+    # signed_names 始终从 DB 实时查询，无需手动更新内存
     return success({'message':'补签成功','session_key':sk})
 
 @app.route('/api/attendance/apply_deduction', methods=['POST'])
@@ -558,8 +707,7 @@ def att_save_report():
         print(f"[DEBUG] save_report 成功 rid={rid}")
         return success({'report_id':rid,'signed_count':signed_count,'absent_count':absent_count})
     except Exception as e:
-        print(f"[ERROR save_report] {e}")
-        import traceback; traceback.print_exc()
+        logger.exception("[ERROR save_report] %s", e)
         return err(str(e))
 
 @app.route('/api/attendance/reports', methods=['GET'])
@@ -1040,8 +1188,8 @@ def _run_grading(script_path, files, hid, sid, total_score):
         try:
             db4=get_db(); cur4=db4.cursor(); cur4.execute("UPDATE homework_submissions SET grading_status='failed',auto_grade_message=%s WHERE id=%s",(str(e),sid)); db4.close()
         except: pass
-        # 打印到控制台便于调试
-        import traceback; traceback.print_exc()
+        # 写入文件日志便于追踪
+        logger.exception("[ERROR auto_grade] sub_id=%s", sid)
 
 @app.route('/api/homework/<int:hid>/grading_script', methods=['POST'])
 @teacher_required
@@ -2681,12 +2829,11 @@ def att_init_sign():
     if not token: return fail('签到令牌缺失，请重新扫码')
     if not cid or not clid: return fail('参数不完整，请重新扫码')
 
-    # ── 1. 校验 scan_token（扫码有效期 10 秒）──
-    _clean_tokens()
-    tk = _scan_tokens.get(token)
+    # ── 1. 校验 scan_token（扫码有效期 10 秒，从 DB 读取）──
+    tk = _db_scan_token_get(token)
     if not tk:
         return fail('二维码已失效，请重新扫码')
-    if tk.get('course_id') and tk['course_id'] != cid:
+    if tk['course_id'] != cid:
         return fail('二维码无效，请重新扫码')
 
     # ── 2. 找活跃会话（教师是否在签到）──
@@ -2702,21 +2849,14 @@ def att_init_sign():
     # ── 3. 设备指纹防重：同一设备本轮次只能签到一次 ──
     sk = active_session[0]
     if device_fp:
-        existing = _device_sessions.get(device_fp)
+        existing = _db_device_check(device_fp, sk)
         if existing and existing['session_key'] == sk:
             return fail('该设备已签到，请勿重复扫码')
 
-    # ── 4. 消耗 scan_token，生成 sign_token（15秒签到窗口）──
-    del _scan_tokens[token]
-
+    # ── 4. 保留 scan_token（不删除，多个学生可共用10秒有效期的二维码）
+    #     生成 sign_token（15秒签到窗口）
     sign_token = secrets.token_hex(16)
-    _sign_tokens[sign_token] = {
-        'course_id': cid,
-        'class_id': clid,
-        'session_key': sk,
-        'device_fp': device_fp,
-        'expire_at': time.time() + 15
-    }
+    _db_sign_token_create(sign_token, cid, clid, sk, device_fp, int(time.time())+15)
 
     return success({'sign_token': sign_token, 'expires_in': 15})
 
@@ -2733,15 +2873,14 @@ def att_submit():
     if not sign_token: return fail('签到令牌缺失，请重新扫码')
     if not cid or not clid: return fail('参数不完整，请重新扫码')
 
-    # ── 1. 校验 sign_token ──
-    _clean_tokens()
-    tk = _sign_tokens.get(sign_token)
+    # ── 1. 校验 sign_token（从 DB 读取）──
+    tk = _db_sign_token_get(sign_token)
     if not tk:
         return fail('签到已过期，请重新扫码')
-    if tk.get('course_id') != cid or tk.get('class_id') != clid:
+    if tk['course_id'] != cid or tk['class_id'] != clid:
         return fail('签到令牌无效')
 
-    # ── 2. 查花名册（course_id 对应的 class_id 下所有学生）──
+    # ── 2. 查花名册 ──
     db = get_db(); cur = db.cursor()
     cur.execute("SELECT name FROM students WHERE class_id=%s", (clid,))
     roster = [r['name'] for r in cur.fetchall()]
@@ -2749,15 +2888,15 @@ def att_submit():
         db.close()
         return fail(f'"{name}" 不在该班级花名册中，请确认姓名或联系教师手动补签')
 
-    # ── 3. 防重复签到（同一 session_key 同一姓名）──
+    # ── 3. 防重复签到（从 DB 查询已签到名单）──
     sk = tk['session_key']
-    sv = _att_sessions.get(sk, {})
-    if name in sv.get('signed_names', set()):
+    signed_names = _db_signed_names(sk)
+    if name in signed_names:
         db.close()
         return fail(f'"{name}" 已签到，请勿重复提交')
 
-    # ── 4. 消耗 sign_token，写入 DB，更新内存 ──
-    del _sign_tokens[sign_token]
+    # ── 4. 消耗 sign_token，写入 DB，记录设备锁 ──
+    _db_sign_token_del(sign_token)
 
     sign_key = f"{sk}:{name}"
     cur.execute(
@@ -2768,17 +2907,25 @@ def att_submit():
     )
     db.close()
 
-    sv['signed_names'].add(name)
     # 记录设备指纹，防止该设备本轮次再次签到
     device_fp = tk.get('device_fp')
     if device_fp:
-        _device_sessions[device_fp] = {'course_id': cid, 'class_id': clid, 'session_key': sk}
+        _db_device_lock(device_fp, cid, clid, sk)
 
-    # 计算签到名次（signed_names 是有序 set，按签到顺序排列）
-    rank = list(sv['signed_names']).index(name) + 1
-    total = len(sv['signed_names'])
+    # 计算签到名次（从 DB 重新查，保证准确性）
+    updated_names = _db_signed_names(sk)
+    rank = updated_names.index(name) + 1
+    total = len(updated_names)
     return success({'message': f'{name} 签到成功', 'rank': rank, 'total': total})
 
+
 if __name__ == '__main__':
+    _init_token_tables()
+    logger.info("[启动] 考勤 token 表初始化完成，开始监听...")
     print("Starting SmartClass Backend on http://0.0.0.0:5000")
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    # Windows 推荐 waitress 多线程（gunicorn 只支持 Linux）
+    # waitress 支持 --threads 并发，多 worker 共享数据库 MEMORY 表
+    from waitress import serve
+    logger.info("[启动] 使用 waitress 多线程模式（--threads=8）")
+    print("Using waitress multi-threaded server (8 threads)")
+    serve(app, host='0.0.0.0', port=5000, threads=8)

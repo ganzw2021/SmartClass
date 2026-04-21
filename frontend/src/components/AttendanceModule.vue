@@ -13,7 +13,7 @@
       <div :class="[
         'w-full aspect-square max-w-[380px] mx-auto mb-4 rounded-2xl overflow-hidden flex items-center justify-center relative transition-all',
         isAttending
-          ? qrCountdown <= 3 ? 'bg-red-50 border-4 border-red-400 shadow-lg animate-pulse' : 'bg-white border-4 border-green-500 shadow-lg'
+          ? 'bg-white border-4 border-green-500 shadow-lg'
           : 'bg-slate-100 border-4 border-dashed border-slate-300'
       ]">
         <!-- 未开启签到 -->
@@ -165,7 +165,6 @@ const currentToken = ref('')
 const qrDataUrl = ref('')
 const signedNames = ref([])
 const startedAt = ref(null)
-const qrCountdown = ref(10)  // 二维码剩余有效期（秒）
 
 // 保存最后一次签到结果（停止签到后仍显示）
 const lastSignedNames = ref([])
@@ -174,7 +173,6 @@ const lastAllStudents = ref([])
 // 定时器
 let qrRefreshTimer = null
 let syncTimer = null
-let countdownTimer = null
 
 // 计算属性
 const filteredClasses = computed(() => {
@@ -210,10 +208,6 @@ const unattendStudents = computed(() => {
 const progressPercent = computed(() => {
   if (!allStudents.value.length) return 0
   return Math.round((signedCount.value / allStudents.value.length) * 100)
-})
-
-const qrCountdownPercent = computed(() => {
-  return (qrCountdown.value / 10) * 100
 })
 
 function getStudentName(student) {
@@ -311,8 +305,8 @@ async function refreshQR() {
     if (res.success && res.data) {
       const url = new URL(res.data.qr_url, BACKEND_BASE)
       currentToken.value = url.searchParams.get('token') || res.data.token || ''
+      currentSessionKey.value = res.data.session_key || currentSessionKey.value
       await generateQRCodeImage(currentToken.value)
-      qrCountdown.value = 10  // 每次刷新重置倒计时
     }
   } catch (e) {
     console.error('刷新二维码失败', e)
@@ -383,24 +377,17 @@ async function toggleAttendance() {
     }
 
     signedNames.value = []
-    qrCountdown.value = 10
     isAttending.value = true
 
     await syncSignedNames()
 
-    // 每3秒刷新二维码（8秒有效期，提示更充裕的扫描时间）
+    // 每1秒刷新二维码
     qrRefreshTimer = setInterval(async () => {
-      qrCountdown.value = 10 // 每次刷新重置倒计时
       await refreshQR()
-    }, 3000)
+    }, 1000)
 
     // 3秒同步已签到名单
     syncTimer = setInterval(syncSignedNames, 3000)
-
-    // 二维码倒计时（每秒递减）
-    countdownTimer = setInterval(() => {
-      if (qrCountdown.value > 0) qrCountdown.value--
-    }, 1000)
   } else {
     // 保存最后一次签到结果
     lastSignedNames.value = [...signedNames.value]
@@ -409,10 +396,8 @@ async function toggleAttendance() {
     isAttending.value = false
     clearInterval(qrRefreshTimer)
     clearInterval(syncTimer)
-    clearInterval(countdownTimer)
     qrRefreshTimer = null
     syncTimer = null
-    countdownTimer = null
     await stopSign()
     qrDataUrl.value = ''
     currentSessionKey.value = ''
@@ -426,7 +411,5 @@ onUnmounted(() => {
   if (isAttending.value) stopSign()
   clearInterval(qrRefreshTimer)
   clearInterval(syncTimer)
-  clearInterval(countdownTimer)
-  clearInterval(signCountdownTimer)
 })
 </script>
