@@ -385,13 +385,40 @@ async function doUpdateStatus() {
   try {
     await updateStudentAttendanceStatus(modifyTarget.value.id, selectedStatus.value, modifyNote.value)
     
-    // 同步更新 detailData 中的记录
+    // 同步更新 detailData 中的记录（触发弹窗内统计卡片更新）
     const students = detailData.value.students || []
     const idx = students.findIndex(s => s.id === modifyTarget.value.id)
     if (idx >= 0) {
       // 使用 splice 触发 Vue 响应式更新
       students.splice(idx, 1, { ...students[idx], status: selectedStatus.value, note: modifyNote.value })
     }
+    
+    // 同步更新列表页的卡片统计
+    const reportId = detailData.value.id
+    const reportIdx = reports.value.findIndex(r => r.id === reportId)
+    if (reportIdx >= 0) {
+      const report = reports.value[reportIdx]
+      const oldSigned = report.signed_count || 0
+      const oldAbsent = report.absent_count || 0
+      const total = report.total_students || 0
+      
+      // 计算新状态对签到/缺勤数的影响
+      const oldStatus = modifyTarget.value.status
+      const newStatus = selectedStatus.value
+      const isSigned = (s) => s === 'signed' || s === 'late'
+      const isAbsent = (s) => s === 'absent' || s === 'leave_sick' || s === 'leave_personal' || s === 'early_leave'
+      
+      let newSigned = oldSigned
+      let newAbsent = oldAbsent
+      if (isSigned(oldStatus) && !isSigned(newStatus)) newSigned--
+      if (!isSigned(oldStatus) && isSigned(newStatus)) newSigned++
+      if (isAbsent(oldStatus) && !isAbsent(newStatus)) newAbsent--
+      if (!isAbsent(oldStatus) && isAbsent(newStatus)) newAbsent++
+      
+      // 使用 splice 触发响应式更新
+      reports.value.splice(reportIdx, 1, { ...report, signed_count: Math.max(0, newSigned), absent_count: Math.max(0, newAbsent) })
+    }
+    
     modifyTarget.value = null
   } catch (e) {
     console.error('更新状态失败', e)
