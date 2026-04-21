@@ -384,15 +384,13 @@ async function doUpdateStatus() {
   submitting.value = true
   try {
     await updateStudentAttendanceStatus(modifyTarget.value.id, selectedStatus.value, modifyNote.value)
-    modifyTarget.value.status = selectedStatus.value
-    modifyTarget.value.note = modifyNote.value
-    // 同步更新 detailData 中的记录，并触发响应式更新
+    
+    // 同步更新 detailData 中的记录
     const students = detailData.value.students || []
     const idx = students.findIndex(s => s.id === modifyTarget.value.id)
     if (idx >= 0) {
-      students[idx] = { ...students[idx], status: selectedStatus.value, note: modifyNote.value }
-      // 替换整个数组以触发 Vue 响应式更新
-      detailData.value = { ...detailData.value, students: [...students] }
+      // 使用 splice 触发 Vue 响应式更新
+      students.splice(idx, 1, { ...students[idx], status: selectedStatus.value, note: modifyNote.value })
     }
     modifyTarget.value = null
   } catch (e) {
