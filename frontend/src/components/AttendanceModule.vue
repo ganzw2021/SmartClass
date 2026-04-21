@@ -26,9 +26,16 @@
         <!-- 开启签到后显示二维码 -->
         <img v-else-if="qrDataUrl" :src="qrDataUrl" class="w-full h-full object-contain p-2" alt="签到二维码" />
         <!-- 加载中 -->
-        <div v-else class="flex flex-col items-center">
+        <div v-else-if="!qrError" class="flex flex-col items-center">
           <div class="animate-spin rounded-full h-12 w-12 border-4 border-green-200 border-t-green-600"></div>
           <span class="text-slate-400 text-sm mt-2">生成中...</span>
+        </div>
+        <!-- QR 刷新失败提示 -->
+        <div v-else class="flex flex-col items-center text-red-400">
+          <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          <span class="text-sm mt-2">刷新失败，请检查网络</span>
         </div>
       </div>
 
@@ -299,6 +306,8 @@ async function stopSign() {
 }
 
 // 1秒刷新二维码
+const qrError = ref(false)  // QR 刷新错误标记
+
 async function refreshQR() {
   try {
     const res = await refreshQRCodeUrl(selectedCourse.value, selectedClass.value)
@@ -307,9 +316,11 @@ async function refreshQR() {
       currentToken.value = url.searchParams.get('token') || res.data.token || ''
       currentSessionKey.value = res.data.session_key || currentSessionKey.value
       await generateQRCodeImage(currentToken.value)
+      qrError.value = false
     }
   } catch (e) {
     console.error('刷新二维码失败', e)
+    qrError.value = true
   }
 }
 
@@ -409,7 +420,7 @@ async function toggleAttendance() {
 
 onUnmounted(() => {
   if (isAttending.value) stopSign()
-  clearInterval(qrRefreshTimer)
-  clearInterval(syncTimer)
+  clearInterval(qrRefreshTimer); qrRefreshTimer = null
+  clearInterval(syncTimer); syncTimer = null
 })
 </script>

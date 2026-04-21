@@ -43,7 +43,7 @@ class _DictCursorConn:
     def __getattr__(self, name):
         return getattr(self._c, name)
 
-JWT_SECRET = 'smartclass_jwt_secret_2026'
+JWT_SECRET = os.environ.get('JWT_SECRET', 'smartclass_jwt_secret_2026_fallback_dev')
 JWT_ALGO = 'HS256'
 JWT_EXPIRE_DAYS = 30
 
@@ -353,6 +353,41 @@ def save_score_config():
 _att_sessions={}   # 内存会话：session_key → {course_id, class_id, teacher_id, start_time, active}
                    # signed_names 从 attendance_records DB 实时查询，不再存内存
 
+def _cleanup_expired_tokens():
+    """定时清理过期的 att_tokens（每5分钟执行一次）"""
+    while True:
+        time.sleep(300)  # 5分钟
+        try:
+            db = get_db(); cur = db.cursor()
+            cur.execute("DELETE FROM att_tokens WHERE expire_at < %s AND token_type='scan'", (int(time.time()),))
+            affected = cur.rowcount
+            db.commit(); db.close()
+            if affected > 0:
+                logger.info("[考勤] 清理过期 scan_token %d 条", affected)
+        except Exception as e:
+            logger.error("[考勤] 清理 token 失败: %s", e)
+
+def _cleanup_expired_sessions():
+    """定时清理 24 小时前非活跃的 _att_sessions（每1小时执行一次）"""
+    while True:
+        time.sleep(3600)  # 1小时
+        try:
+            cutoff = datetime.now() - timedelta(hours=24)
+            expired_keys = []
+            for k, v in _att_sessions.items():
+                if not v.get('active') and v.get('start_time', datetime.now()) < cutoff:
+                    expired_keys.append(k)
+            for k in expired_keys:
+                del _att_sessions[k]
+            if expired_keys:
+                logger.info("[考勤] 清理过期 session %d 条", len(expired_keys))
+        except Exception as e:
+            logger.error("[考勤] 清理 session 失败: %s", e)
+
+# ── 启动后台清理线程 ──
+threading.Thread(target=_cleanup_expired_tokens, daemon=True).start()
+threading.Thread(target=_cleanup_expired_sessions, daemon=True).start()
+
 # ── 数据库 token 表（MEMORY 引擎，所有 worker 共享）──
 def _init_token_tables():
     """启动时初始化 MEMORY 表，create table if not exists"""
@@ -575,6 +610,14 @@ def att_manual():
     cid=str(d.get('course_id','')); clid=str(d.get('class_id','')); name=(d.get('student_name') or '').strip()
     if not name: return err('学生姓名不能为空')
     
+    # ── P0: 验证课程归属 ──
+    db_check = get_db(); cur_check = db_check.cursor()
+    cur_check.execute("SELECT id FROM courses WHERE id=%s AND teacher_id=%s", (cid, request.teacher_id))
+    if not cur_check.fetchone():
+        db_check.close()
+        return err('无权操作此课程', 403)
+    db_check.close()
+    
     # 优先使用前端传来的 session_key（最可靠），其次从内存查找 QR 会话
     sk=d.get('session_key','').strip() or None
     if not sk:
@@ -603,17 +646,38 @@ def att_deduction():
     d=request.get_json() or {}
     cid=str(d.get('course_id','')); clid=str(d.get('class_id','')); deduct=float(d.get('deduct_per_person',0))
     if deduct<=0: return err('扣分必须大于0')
+    
+    # ── P0: 验证课程归属 ──
+    db_chk = get_db(); cur_chk = db_chk.cursor()
+    cur_chk.execute("SELECT id FROM courses WHERE id=%s AND teacher_id=%s", (cid, request.teacher_id))
+    if not cur_chk.fetchone():
+        db_chk.close()
+        return err('无权操作此课程', 403)
+    db_chk.close()
+    
     db=get_db(); cur=db.cursor()
     cur.execute("SELECT id,name FROM students WHERE class_id=%s",(clid,))
     students=cur.fetchall()
     cur.execute("SELECT student_name FROM attendance_records WHERE course_id=%s AND class_id=%s",(cid,clid))
     signed=set(r['student_name'] for r in cur.fetchall())
+    
+    # ── P2: 排除已请假的学生的考勤扣分 ──
+    # 查询当前课程+班级的考勤报表中的请假学生
+    cur.execute("""
+        SELECT DISTINCT asr.student_name
+        FROM attendance_reports ar
+        JOIN attendance_student_records asr ON asr.report_id=ar.id
+        WHERE ar.course_id=%s AND ar.class_id=%s AND asr.status='leave'
+    """, (cid, clid))
+    leave_students = set(r['student_name'] for r in cur.fetchall())
+    
     updated=0
     for s in students:
-        if s['name'] not in signed:
+        # 排除已签到和已请假的学生，只扣真正缺勤的
+        if s['name'] not in signed and s['name'] not in leave_students:
             cur.execute("INSERT INTO scores (course_id,class_id,student_id,student_name,att_score) VALUES (%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE att_score=VALUES(att_score)",(cid,clid,s['id'],s['name'],-deduct))
             updated+=1
-    db.close(); return success({'message':f'已为{updated}名未签到学生设置考勤扣分'})
+    db.close(); return success({'message':f'已为{updated}名未签到且未请假学生设置考勤扣分（已排除{len(leave_students)}名请假学生）'})
 
 @app.route('/api/attendance/save_report', methods=['POST'])
 @teacher_required
@@ -622,7 +686,7 @@ def att_save_report():
     cid=str(d.get('course_id','')); clid=str(d.get('class_id',''))
     # 传入 session_key 则只查该会话的签到记录；不传则兼容旧逻辑（查所有历史）
     session_key = d.get('session_key', '')
-    print(f"[DEBUG save_report] cid={cid}, clid={clid}, teacher={request.teacher_id}, session_key={session_key}")
+    logger.debug("save_report: cid=%s, clid=%s, teacher=%s, session_key=%s", cid, clid, request.teacher_id, session_key)
     try:
         db=get_db(); cur=db.cursor()
 
@@ -661,7 +725,7 @@ def att_save_report():
                 ORDER BY s.name
             """, (cid, clid, clid))
         rows=cur.fetchall()
-        print(f"[DEBUG] LEFT JOIN 返回 {len(rows)} 行，signed={sum(1 for r in rows if r['is_signed'])}")
+        logger.debug("LEFT JOIN 返回 %d 行，signed=%d", len(rows), sum(1 for r in rows if r['is_signed']))
         db.close()
 
         total = len(rows)
@@ -673,7 +737,7 @@ def att_save_report():
         course_row=cur2.fetchone(); course_name=course_row['name'] if course_row else ''
         cur2.execute("SELECT name FROM classes WHERE id=%s",(clid,))
         class_row=cur2.fetchone(); class_name=class_row['name'] if class_row else ''
-        print(f"[DEBUG] course_name={course_name}, class_name={class_name}")
+        logger.debug("course_name=%s, class_name=%s", course_name, class_name)
 
         from datetime import datetime
         def _parse_ts(v):
@@ -693,7 +757,7 @@ def att_save_report():
              started_at, ended_at,
              total,signed_count,absent_count))
         rid=cur2.lastrowid
-        print(f"[DEBUG] INSERT report rid={rid}")
+        logger.debug("INSERT report rid=%s", rid)
 
         for r in rows:
             status = 'signed' if r['is_signed'] else 'absent'
@@ -704,7 +768,7 @@ def att_save_report():
             """,(rid,r['id'],r['name'],r['student_number'],status,sign_time))
 
         db2.close()
-        print(f"[DEBUG] save_report 成功 rid={rid}")
+        logger.debug("save_report 成功 rid=%s", rid)
         return success({'report_id':rid,'signed_count':signed_count,'absent_count':absent_count})
     except Exception as e:
         logger.exception("[ERROR save_report] %s", e)
