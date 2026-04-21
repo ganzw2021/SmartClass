@@ -152,7 +152,7 @@
         <!-- 统计数字卡 -->
         <div class="grid grid-cols-5 divide-x divide-slate-100 bg-white">
           <div class="py-4 px-2 text-center">
-            <div class="text-2xl font-black text-emerald-600">{{ detailData.signed_count || 0 }}</div>
+            <div class="text-2xl font-black text-emerald-600">{{ detailSignedCount }}</div>
             <div class="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wide">已签到</div>
           </div>
           <div class="py-4 px-2 text-center">
@@ -164,7 +164,7 @@
             <div class="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wide">请假</div>
           </div>
           <div class="py-4 px-2 text-center">
-            <div class="text-2xl font-black text-rose-600">{{ detailData.absent_count || 0 }}</div>
+            <div class="text-2xl font-black text-rose-600">{{ detailAbsentCount }}</div>
             <div class="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wide">缺勤</div>
           </div>
           <div class="py-4 px-2 text-center">
@@ -331,10 +331,16 @@ const leaveCount = computed(() => {
   const students = detailData.value.students || []
   return students.filter(s => s.status === 'leave_sick' || s.status === 'leave_personal').length
 })
+// 计算当前详情中的已签到和缺勤数（实时反映修改）
+const detailSignedCount = computed(() => detailData.value.students?.filter(s => s.status === 'signed' || s.status === 'late').length || 0)
+const detailAbsentCount = computed(() => {
+  const students = detailData.value.students || []
+  return students.filter(s => s.status === 'absent' || s.status === 'leave_sick' || s.status === 'leave_personal' || s.status === 'early_leave').length
+})
 const attendanceRate = computed(() => {
   const total = detailData.value.total_students || 0
   if (!total) return 0
-  const rate = ((detailData.value.signed_count || 0) / total * 100)
+  const rate = (detailSignedCount.value / total * 100)
   return Math.round(rate)
 })
 const exporting = ref(false)
