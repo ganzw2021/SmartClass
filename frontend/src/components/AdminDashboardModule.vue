@@ -139,7 +139,7 @@ function initDonutChart(data) {
   if (!donutChart.value) return
   const ins = echarts.init(donutChart.value)
   charts.push(ins)
-  const colorMap = { '已签到': '#10b981', '缺勤': '#ef4444', '迟到': '#f59e0b', '请假': '#6366f1' }
+  const colorMap = { '已签到': '#10b981', '缺勤': '#ef4444', '迟到': '#f59e0b', '请假': '#6366f1', '病假': '#3b82f6', '事假': '#8b5cf6', '早退': '#f97316' }
   ins.setOption({
     backgroundColor: 'transparent',
     tooltip: {
