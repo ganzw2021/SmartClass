@@ -1201,6 +1201,40 @@ def grade_hw(hid):
             cur.execute("INSERT INTO homework_score_ranking (class_id,student_id,student_name,total_score,homework_count) VALUES (%s,%s,%s,%s,%s)",(info['class_id'],info['student_id'],info['student_name'],new_total,new_count))
     db.close(); return success({'message':'评分成功'})
 
+@app.route('/api/homework/batch_update_feedback', methods=['POST'])
+@admin_required
+def batch_update_feedback():
+    """批量为没有评语的作业根据分数添加评语"""
+    db = get_db(); cur = db.cursor()
+    # 查询所有没有评语但有分数的提交
+    cur.execute("""
+        SELECT id, score, student_name 
+        FROM homework_submissions 
+        WHERE score IS NOT NULL 
+        AND (feedback IS NULL OR feedback = '')
+    """)
+    records = cur.fetchall()
+    
+    def gen_feedback(score):
+        if score >= 80:
+            return '优秀，继续保持！'
+        elif score >= 60:
+            return '良好，还有进步空间！'
+        else:
+            return '继续加油，争取更好成绩！'
+    
+    updated = 0
+    for rec in records:
+        sid, score, name = rec['id'], rec['score'], rec['student_name']
+        feedback = gen_feedback(score)
+        cur.execute("UPDATE homework_submissions SET feedback=%s WHERE id=%s", (feedback, sid))
+        updated += 1
+    
+    db.commit()
+    logger.info(f"[批量更新] 为 {updated} 条作业添加评语")
+    db.close()
+    return success({'message': f'已为 {updated} 条作业添加评语', 'updated': updated})
+
 @app.route('/api/homework/ranking', methods=['GET'])
 @teacher_required
 def get_hw_ranking():
