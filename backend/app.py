@@ -388,44 +388,35 @@ def _cleanup_expired_sessions():
 threading.Thread(target=_cleanup_expired_tokens, daemon=True).start()
 threading.Thread(target=_cleanup_expired_sessions, daemon=True).start()
 
-# ── 数据库 token 表（SQLite 持久化 or MySQL MEMORY 引擎）──
+# ── 数据库 token 表（MEMORY 引擎，所有 worker 共享）──
 def _init_token_tables():
-    """启动时初始化 token 表（兼容 SQLite 和 MySQL）"""
+    """启动时初始化 MEMORY 表（MySQL）"""
     db = get_db(); cur = db.cursor()
     try:
-        # 自动检测数据库类型
-        cur.execute("SELECT 1")
-        db_type = 'sqlite'
-        try:
-            cur.execute("SELECT 1 FROM att_tokens LIMIT 1")
-        except:
-            pass
-        # 统一用 SQLite 兼容语法（SQLite 忽略未知选项如 ENGINE=）
         cur.execute("""
             CREATE TABLE IF NOT EXISTS att_tokens (
-                token       TEXT PRIMARY KEY,
-                token_type  TEXT NOT NULL,
-                course_id   TEXT,
-                class_id    TEXT,
-                session_key TEXT,
-                device_fp   TEXT,
-                expire_at   INTEGER NOT NULL,
-                created_at  TEXT DEFAULT (datetime('now'))
-            )
+                token      VARCHAR(64) PRIMARY KEY,
+                token_type ENUM('scan','sign') NOT NULL,
+                course_id  VARCHAR(32),
+                class_id   VARCHAR(32),
+                session_key VARCHAR(256),
+                device_fp  VARCHAR(128),
+                expire_at  BIGINT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_session_key (session_key),
+                INDEX idx_expire (expire_at)
+            ) ENGINE=MEMORY
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS att_device_sessions (
-                device_fp   TEXT PRIMARY KEY,
-                course_id   TEXT,
-                class_id    TEXT,
-                session_key TEXT
-            )
+                device_fp  VARCHAR(128) PRIMARY KEY,
+                course_id  VARCHAR(32),
+                class_id   VARCHAR(32),
+                session_key VARCHAR(256)
+            ) ENGINE=MEMORY
         """)
         db.commit()
-        logger.info("[考勤] att_tokens / att_device_sessions 初始化完成 (SQLite兼容模式)")
-    except Exception as e:
-        logger.warning("[考勤] 表初始化异常: %s", e)
-        db.rollback()
+        logger.info("[考勤] att_tokens / att_device_sessions 初始化完成")
     finally:
         cur.close(); db.close()
 
