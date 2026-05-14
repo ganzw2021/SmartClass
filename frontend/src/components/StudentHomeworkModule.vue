@@ -65,14 +65,19 @@
             <p v-if="hw.description" class="text-sm text-slate-400 line-clamp-2">{{ hw.description }}</p>
 
             <!-- 提交信息 -->
-            <div v-if="hw.submitted && hw.submission" class="mt-3 flex items-center gap-4 text-xs text-slate-400">
-              <span v-if="hw.submission.score !== null && hw.submission.score !== undefined">
-                得分：<strong class="text-blue-600">{{ hw.submission.score }}分</strong>
-              </span>
-              <span v-else-if="hw.submission.auto_score !== null && hw.submission.auto_score !== undefined">
-                自动评分：<strong class="text-orange-500">{{ hw.submission.auto_score }}分</strong>
-              </span>
-              <span>提交于 {{ formatDate(hw.submission.submitted_at) }}</span>
+            <div v-if="hw.submitted && hw.submission" class="mt-3 flex flex-col gap-1 text-xs text-slate-400">
+              <div class="flex items-center gap-4">
+                <span v-if="hw.submission.score !== null && hw.submission.score !== undefined">
+                  得分：<strong class="text-blue-600">{{ hw.submission.score }}分</strong>
+                </span>
+                <span v-else-if="hw.submission.auto_score !== null && hw.submission.auto_score !== undefined">
+                  自动评分：<strong class="text-orange-500">{{ hw.submission.auto_score }}分</strong>
+                </span>
+                <span>提交于 {{ formatDate(hw.submission.submitted_at) }}</span>
+              </div>
+              <div v-if="hw.submission.feedback" class="text-yellow-600 truncate">
+                评语：{{ hw.submission.feedback }}
+              </div>
             </div>
           </div>
 
@@ -224,9 +229,9 @@
                 <pre class="text-slate-600 whitespace-pre-wrap">{{ typeof detailHw.submission.auto_grade_details === 'string' ? detailHw.submission.auto_grade_details : JSON.stringify(detailHw.submission.auto_grade_details, null, 2) }}</pre>
               </div>
               <!-- 教师评语 -->
-              <div v-if="detailHw.submission.comment" class="flex gap-2">
+              <div v-if="detailHw.submission.feedback" class="flex gap-2">
                 <span class="text-slate-500">教师评语：</span>
-                <span class="text-slate-700">{{ detailHw.submission.comment }}</span>
+                <span class="text-slate-700">{{ detailHw.submission.feedback }}</span>
               </div>
               <div class="text-xs text-slate-400 mt-1">
                 提交时间：{{ formatDate(detailHw.submission.submitted_at) }}

@@ -4,8 +4,8 @@ import os, sys, json, time, uuid, secrets, threading, subprocess, logging
 from datetime import datetime, timedelta
 from functools import wraps
 from decimal import Decimal
-import bcrypt, pymysql, jwt
-from dbutils.pooled_db import PooledDB
+import sqlite3
+import bcrypt, jwt
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 
@@ -29,22 +29,59 @@ logging.basicConfig(
 )
 logger = logging.getLogger('smartclass')
 
-DB_CONFIG = {
-    'host':'127.0.0.1','port':3306,'user':'root','password':'Root@123456',
-    'database':'smartclass','charset':'utf8mb4','autocommit':True,
-    'connect_timeout': 10,       # 连接超时 10 秒
-    'read_timeout': 30,          # 读超时 30 秒
-    'write_timeout': 30,         # 写超时 30 秒
-}
+DB_PATH = os.path.join(BASE_DIR, 'smartclass.db')
 
-# 让所有 cursor 默认返回 dict 而非 tuple
-class _DictCursorConn:
-    def __init__(self, conn):
-        self._c = conn
-    def cursor(self, cursorclass=None):
-        return self._c.cursor(pymysql.cursors.DictCursor)
-    def __getattr__(self, name):
-        return getattr(self._c, name)
+# SQLite 连接
+def get_db():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+# 序列化函数
+def _ser(v):
+    if v is None: return None
+    if isinstance(v, datetime): return v.strftime('%Y-%m-%dT%H:%M:%S')
+    if isinstance(v, Decimal): return float(v)
+    if isinstance(v, bytes): return v.decode('utf-8','replace')
+    if isinstance(v, str):
+        if v.startswith('{') or v.startswith('['):
+            try: return json.loads(v)
+            except: pass
+    return v
+
+def _row(r):
+    if r is None: return None
+    if isinstance(r, sqlite3.Row):
+        return {k: _ser(r[k]) for k in r.keys()}
+    return {k: _ser(v) for k, v in r.items()}
+def _rows(r): return [_row(x) for x in r] if r else []
+
+def get_db():
+    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def _ser(v):
+    if v is None: return None
+    if isinstance(v, datetime): return v.strftime('%Y-%m-%dT%H:%M:%S')
+    if isinstance(v, Decimal): return float(v)
+    if isinstance(v, bytes): return v.decode('utf-8','replace')
+    if isinstance(v, str):
+        if v.startswith('{') or v.startswith('['):
+            try: return json.loads(v)
+            except: pass
+    return v
+
+def _row(r):
+    if r is None: return None
+    if isinstance(r, sqlite3.Row):
+        return {k: _ser(r[k]) for k in r.keys()}
+    return {k: _ser(v) for k, v in r.items()}
+def _rows(r): return [_row(x) for x in r] if r else []
+
+JWT_SECRET = os.environ.get('JWT_SECRET', 'smartclass_jwt_secret_2026_fallback_dev')
+JWT_ALGO = 'HS256'
+JWT_EXPIRE_DAYS = 30
 
 JWT_SECRET = os.environ.get('JWT_SECRET', 'smartclass_jwt_secret_2026_fallback_dev')
 JWT_ALGO = 'HS256'
@@ -53,20 +90,6 @@ JWT_EXPIRE_DAYS = 30
 app = Flask(__name__)
 CORS(app, resources={r"/api/*":{"origins":"*"}})
 app.config['MAX_CONTENT_LENGTH'] = 100*1024*1024
-
-# 连接池：支持 3000 并发，优化连接复用
-_db_pool = PooledDB(
-    creator=pymysql,
-    maxconnections=32,   # 8→32，最多32个活跃连接
-    mincached=4,          # 2→4，初始预建4个连接
-    maxcached=16,         # 5→16，缓存最多16个连接
-    maxshared=8,          # 新增：最多8个共享连接（适用于多线程）
-    blocking=True,
-    **DB_CONFIG
-)
-
-def get_db():
-    return _DictCursorConn(_db_pool.connection())
 
 def _ser(v):
     if v is None: return None
@@ -178,19 +201,19 @@ def login():
         token=gen_token(user['id'],'admin',{'username':user['username']})
         return success({'token':token,'user':{'id':user['id'],'username':user['username'],'name':user.get('real_name',user['username']),'role':'admin'}})
     elif login_type=='teacher':
-        cur.execute("SELECT * FROM teachers WHERE username=%s",(username,))
+        cur.execute("SELECT * FROM teachers WHERE username=?",(username,))
         user=cur.fetchone(); db.close()
         if not user or not bcrypt.checkpw(password.encode(),user['password_hash'].encode()): return fail('用户名或密码错误')
         token=gen_token(user['id'],'teacher',{'username':user['username']})
         return success({'token':token,'user':{'id':user['id'],'username':user['username'],'name':user.get('real_name',user['username']),'role':'teacher'}})
     elif login_type=='student':
-        cur.execute("SELECT sa.*,s.name,s.student_number FROM student_accounts sa JOIN students s ON sa.student_id=s.id WHERE sa.username=%s",(username,))
+        cur.execute("SELECT sa.*,s.name,s.student_number FROM student_accounts sa JOIN students s ON sa.student_id=s.id WHERE sa.username=?",(username,))
         user=cur.fetchone(); db.close()
         if not user or not bcrypt.checkpw(password.encode(),user['password'].encode()): return fail('学号或密码错误')
         token=gen_token(user['student_id'],'student',{'student_number':user['student_number']})
         # 记录活跃日志
         _db=get_db(); _cur=_db.cursor()
-        _cur.execute("INSERT IGNORE INTO student_login_logs (student_id, login_date) VALUES (%s, CURDATE())",(user['student_id'],))
+        _cur.execute("INSERT IGNORE INTO student_login_logs (student_id, login_date) VALUES (?, date('now'))",(user['student_id'],))
         _db.commit(); _db.close()
         return success({'token':token,'user':{'id':user['student_id'],'username':user['student_number'],'name':user.get('name',''),'role':'student'}})
     return err('无效的登录类型')
@@ -199,7 +222,7 @@ def login():
 @teacher_required
 def auth_me():
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT id,username,real_name FROM teachers WHERE id=%s",(request.teacher_id,))
+    cur.execute("SELECT id,username,real_name FROM teachers WHERE id=?",(request.teacher_id,))
     u=cur.fetchone(); db.close()
     return success({'id':u['id'],'username':u['username'],'name':u.get('real_name',u['username']),'role':'teacher'}) if u else err('用户不存在',404)
 
@@ -210,11 +233,11 @@ def change_password():
     old_p=d.get('old_password',''); new_p=d.get('new_password','')
     if not old_p or not new_p: return err('旧密码和新密码都不能为空')
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT password_hash FROM teachers WHERE id=%s",(request.teacher_id,))
+    cur.execute("SELECT password_hash FROM teachers WHERE id=?",(request.teacher_id,))
     u=cur.fetchone()
     if not u or not bcrypt.checkpw(old_p.encode(),u['password_hash'].encode()): db.close(); return err('旧密码错误')
     new_hash=bcrypt.hashpw(new_p.encode(),bcrypt.gensalt()).decode()
-    cur.execute("UPDATE teachers SET password_hash=%s WHERE id=%s",(new_hash,request.teacher_id))
+    cur.execute("UPDATE teachers SET password_hash=? WHERE id=?",(new_hash,request.teacher_id))
     db.close(); return success({'message':'密码修改成功'})
 
 # ======= 班级管理 =======
@@ -235,7 +258,7 @@ def get_all_classes():
 @teacher_required
 def get_class_students(class_id):
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT id,name,student_number,sort_order FROM students WHERE class_id=%s ORDER BY sort_order,name",(class_id,))
+    cur.execute("SELECT id,name,student_number,sort_order FROM students WHERE class_id=? ORDER BY sort_order,name",(class_id,))
     rows=cur.fetchall(); db.close(); return success(_rows(rows))
 
 # ======= 课程管理 =======
@@ -290,8 +313,8 @@ def create_course():
     if not name or not term: return err('课程名称和学期不能为空')
     course_id=str(uuid.uuid4())[:8].upper()
     db=get_db(); cur=db.cursor()
-    cur.execute("INSERT INTO courses (id,name,term,teacher_id) VALUES (%s,%s,%s,%s)",(course_id,name,term,request.teacher_id))
-    for cid in class_ids: cur.execute("INSERT INTO course_classes (course_id,class_id) VALUES (%s,%s)",(course_id,str(cid)))
+    cur.execute("INSERT INTO courses (id,name,term,teacher_id) VALUES (?,?,?,?)",(course_id,name,term,request.teacher_id))
+    for cid in class_ids: cur.execute("INSERT INTO course_classes (course_id,class_id) VALUES (?,?)",(course_id,str(cid)))
     db.close(); return success({'id':course_id})
 
 @app.route('/api/courses/<course_id>', methods=['PUT'])
@@ -301,17 +324,17 @@ def update_course(course_id):
     name=(d.get('name') or '').strip(); term=(d.get('term') or '').strip()
     class_ids=[str(x) for x in (d.get('class_ids') or [])]
     db=get_db(); cur=db.cursor()
-    cur.execute("UPDATE courses SET name=%s,term=%s WHERE id=%s AND teacher_id=%s",(name,term,course_id,request.teacher_id))
-    cur.execute("DELETE FROM course_classes WHERE course_id=%s",(course_id,))
-    for cid in class_ids: cur.execute("INSERT INTO course_classes (course_id,class_id) VALUES (%s,%s)",(course_id,cid))
+    cur.execute("UPDATE courses SET name=?,term=? WHERE id=? AND teacher_id=?",(name,term,course_id,request.teacher_id))
+    cur.execute("DELETE FROM course_classes WHERE course_id=?",(course_id,))
+    for cid in class_ids: cur.execute("INSERT INTO course_classes (course_id,class_id) VALUES (?,?)",(course_id,cid))
     db.close(); return success()
 
 @app.route('/api/courses/<course_id>', methods=['DELETE'])
 @teacher_required
 def delete_course(course_id):
     db=get_db(); cur=db.cursor()
-    cur.execute("DELETE FROM course_classes WHERE course_id=%s",(course_id,))
-    cur.execute("DELETE FROM courses WHERE id=%s AND teacher_id=%s",(course_id,request.teacher_id))
+    cur.execute("DELETE FROM course_classes WHERE course_id=?",(course_id,))
+    cur.execute("DELETE FROM courses WHERE id=? AND teacher_id=?",(course_id,request.teacher_id))
     db.close(); return success()
 
 # ======= 成绩管理 =======
@@ -321,7 +344,7 @@ def get_scores():
     cid=request.args.get('course_id',''); clid=request.args.get('class_id','')
     if not cid or not clid: return err('course_id 和 class_id 不能为空')
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT s.* FROM scores s JOIN courses co ON co.id=s.course_id WHERE s.course_id=%s AND s.class_id=%s AND co.teacher_id=%s ORDER BY s.student_name",(cid,clid,request.teacher_id))
+    cur.execute("SELECT s.* FROM scores s JOIN courses co ON co.id=s.course_id WHERE s.course_id=? AND s.class_id=? AND co.teacher_id=? ORDER BY s.student_name",(cid,clid,request.teacher_id))
     rows=cur.fetchall(); db.close(); return success(_rows(rows))
 
 @app.route('/api/scores', methods=['POST'])
@@ -333,7 +356,7 @@ def update_scores():
         cid=str(it.get('course_id','')); clid=str(it.get('class_id',''))
         sid=int(it.get('student_id',0)); sname=it.get('student_name','')
         att=int(it.get('att_score',0)); inter=int(it.get('interact_score',0)); hw=int(it.get('hw_score',0))
-        cur.execute("INSERT INTO scores (course_id,class_id,student_id,student_name,att_score,interact_score,hw_score) VALUES (%s,%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE att_score=VALUES(att_score),interact_score=VALUES(interact_score),hw_score=VALUES(hw_score)",(cid,clid,sid,sname,att,inter,hw))
+        cur.execute("INSERT INTO scores (course_id,class_id,student_id,student_name,att_score,interact_score,hw_score) VALUES (?,?,?,?,?,?,?),interact_score=VALUES(interact_score),hw_score=VALUES(hw_score)",(cid,clid,sid,sname,att,inter,hw))
     db.close(); return success()
 
 @app.route('/api/scores/config', methods=['GET'])
@@ -341,7 +364,7 @@ def update_scores():
 def get_score_config():
     cid=request.args.get('course_id','')
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT * FROM score_config WHERE course_id=%s",(cid,))
+    cur.execute("SELECT * FROM score_config WHERE course_id=?",(cid,))
     row=cur.fetchone(); db.close()
     return success(_row(row) or {'course_id':cid,'att_max':30,'interact_max':20,'hw_max':50})
 
@@ -350,7 +373,7 @@ def get_score_config():
 def save_score_config():
     d=request.get_json() or {}; cid=str(d.get('course_id',''))
     db=get_db(); cur=db.cursor()
-    cur.execute("INSERT INTO score_config (course_id,att_max,interact_max,hw_max) VALUES (%s,%s,%s,%s) ON DUPLICATE KEY UPDATE att_max=VALUES(att_max),interact_max=VALUES(interact_max),hw_max=VALUES(hw_max)",(cid,d.get('att_max',30),d.get('interact_max',20),d.get('hw_max',50)))
+    cur.execute("INSERT INTO score_config (course_id,att_max,interact_max,hw_max) VALUES (?,?,?,?),interact_max=VALUES(interact_max),hw_max=VALUES(hw_max)",(cid,d.get('att_max',30),d.get('interact_max',20),d.get('hw_max',50)))
     db.close(); return success()
 
 # ======= 考勤 =======
@@ -363,7 +386,7 @@ def _cleanup_expired_tokens():
         time.sleep(300)  # 5分钟
         try:
             db = get_db(); cur = db.cursor()
-            cur.execute("DELETE FROM att_tokens WHERE expire_at < %s AND token_type='scan'", (int(time.time()),))
+            cur.execute("DELETE FROM att_tokens WHERE expire_at < ? AND token_type=?", (int(time.time()),))
             affected = cur.rowcount
             db.commit(); db.close()
             if affected > 0:
@@ -394,22 +417,20 @@ threading.Thread(target=_cleanup_expired_sessions, daemon=True).start()
 
 # ── 数据库 token 表（MEMORY 引擎，所有 worker 共享）──
 def _init_token_tables():
-    """启动时初始化 MEMORY 表（MySQL）"""
+    """启动时初始化 MEMORY 表，create table if not exists"""
     db = get_db(); cur = db.cursor()
     try:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS att_tokens (
                 token      VARCHAR(64) PRIMARY KEY,
-                token_type ENUM('scan','sign') NOT NULL,
+                token_type TEXT NOT NULL,
                 course_id  VARCHAR(32),
                 class_id   VARCHAR(32),
                 session_key VARCHAR(256),
                 device_fp  VARCHAR(128),
                 expire_at  BIGINT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_session_key (session_key),
-                INDEX idx_expire (expire_at)
-            ) ENGINE=MEMORY
+)
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS att_device_sessions (
@@ -417,42 +438,10 @@ def _init_token_tables():
                 course_id  VARCHAR(32),
                 class_id   VARCHAR(32),
                 session_key VARCHAR(256)
-            ) ENGINE=MEMORY
+)
         """)
         db.commit()
         logger.info("[考勤] att_tokens / att_device_sessions 初始化完成")
-    finally:
-        cur.close(); db.close()
-
-def _ensure_indexes():
-    """确保关键索引存在（3000并发优化）"""
-    db = get_db(); cur = db.cursor()
-    indexes = [
-        # 考勤表索引
-        ("idx_att_session_sign", "attendance_records", "session_key, sign_time"),
-        ("idx_att_course_class", "attendance_records", "course_id, class_id"),
-        # 作业提交表索引
-        ("idx_sub_hw_student", "homework_submissions", "homework_id, student_id"),
-        ("idx_sub_student", "homework_submissions", "student_id"),
-        # 学生表索引
-        ("idx_student_class", "students", "class_id"),
-        # 考勤报表索引
-        ("idx_report_teacher", "attendance_reports", "teacher_id, ended_at"),
-        # 考勤学生明细索引
-        ("idx_stu_rec_report", "attendance_student_records", "report_id"),
-        # 考勤会话索引
-        ("idx_att_tokens_expire", "att_tokens", "expire_at"),
-        ("idx_att_tokens_session", "att_tokens", "session_key"),
-    ]
-    for idx_name, tbl, cols in indexes:
-        try:
-            cur.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {tbl} ({cols})")
-            logger.debug(f"[索引] {idx_name} ON {tbl}({cols}) ✓")
-        except Exception as e:
-            logger.debug(f"[索引] {idx_name} 跳过: {e}")
-    try:
-        db.commit()
-        logger.info("[索引] 关键索引检查完成")
     finally:
         cur.close(); db.close()
 
@@ -460,7 +449,7 @@ def _db_scan_token_create(token, cid, clid, expire_at):
     """生成扫码令牌（写入 DB + 内存备查）"""
     db = get_db(); cur = db.cursor()
     try:
-        cur.execute("DELETE FROM att_tokens WHERE token=%s AND token_type='scan'", (token,))
+        cur.execute("DELETE FROM att_tokens WHERE token=? AND token_type=?", (token,))
         cur.execute(
             "INSERT INTO att_tokens (token,token_type,course_id,class_id,expire_at) VALUES (%s,'scan',%s,%s,%s)",
             (token, cid, clid, expire_at)
@@ -474,7 +463,7 @@ def _db_scan_token_get(token):
     db = get_db(); cur = db.cursor()
     try:
         cur.execute(
-            "SELECT course_id,class_id FROM att_tokens WHERE token=%s AND token_type='scan' AND expire_at>%s",
+            "SELECT course_id,class_id FROM att_tokens WHERE token=%s AND token_type=? AND expire_at>%s",
             (token, int(time.time()))
         )
         r = cur.fetchone()
@@ -486,7 +475,7 @@ def _db_scan_token_del(token):
     """消耗扫码令牌"""
     db = get_db(); cur = db.cursor()
     try:
-        cur.execute("DELETE FROM att_tokens WHERE token=%s AND token_type='scan'", (token,))
+        cur.execute("DELETE FROM att_tokens WHERE token=? AND token_type=?", (token,))
         db.commit()
     finally:
         cur.close(); db.close()
@@ -495,7 +484,7 @@ def _db_sign_token_create(sign_token, cid, clid, sk, device_fp, expire_at):
     """生成签到令牌"""
     db = get_db(); cur = db.cursor()
     try:
-        cur.execute("DELETE FROM att_tokens WHERE token=%s AND token_type='sign'", (sign_token,))
+        cur.execute("DELETE FROM att_tokens WHERE token=? AND token_type='sign'", (sign_token,))
         cur.execute(
             "INSERT INTO att_tokens (token,token_type,course_id,class_id,session_key,device_fp,expire_at) VALUES (%s,'sign',%s,%s,%s,%s,%s)",
             (sign_token, cid, clid, sk, device_fp, expire_at)
@@ -520,7 +509,7 @@ def _db_sign_token_del(sign_token):
     """消耗签到令牌"""
     db = get_db(); cur = db.cursor()
     try:
-        cur.execute("DELETE FROM att_tokens WHERE token=%s AND token_type='sign'", (sign_token,))
+        cur.execute("DELETE FROM att_tokens WHERE token=? AND token_type='sign'", (sign_token,))
         db.commit()
     finally:
         cur.close(); db.close()
@@ -530,17 +519,17 @@ def _db_device_lock(device_fp, cid, clid, sk):
     db = get_db(); cur = db.cursor()
     try:
         cur.execute(
-            "INSERT INTO att_device_sessions (device_fp,course_id,class_id,session_key) VALUES (%s,%s,%s,%s)",
+            "INSERT INTO att_device_sessions (device_fp,course_id,class_id,session_key) VALUES (?,?,?,?)",
             (device_fp, cid, clid, sk)
         )
         db.commit()
-    except pymysql.err.IntegrityError:
+    except sqlite3.IntegrityError:
         db.rollback()
     finally:
         cur.close(); db.close()
 
 def _db_device_check(device_fp, sk):
-    """检查设备是否已签到本轮次（精确匹配 session_key）"""
+    """检查设备是否已签到本轮次"""
     db = get_db(); cur = db.cursor()
     try:
         cur.execute(
@@ -548,10 +537,7 @@ def _db_device_check(device_fp, sk):
             (device_fp,)
         )
         r = cur.fetchone()
-        # 必须精确匹配 session_key，防止跨会话误判
-        if r and r['session_key'] == sk:
-            return r
-        return None
+        return r
     finally:
         cur.close(); db.close()
 
@@ -559,14 +545,8 @@ def _db_device_unlock_course(cid, clid):
     """清除本课程+班级的所有设备锁"""
     db = get_db(); cur = db.cursor()
     try:
-        # 同时清除设备锁和 sign_token（学生需要重新扫码获取新 token）
-        cur.execute("DELETE FROM att_device_sessions WHERE course_id=%s AND class_id=%s", (cid, clid))
-        cur.execute("DELETE FROM att_tokens WHERE course_id=%s AND class_id=%s AND token_type='sign'", (cid, clid))
+        cur.execute("DELETE FROM att_device_sessions WHERE course_id=? AND class_id=?", (cid, clid))
         db.commit()
-        logger.debug("[设备锁] 课程=%s 班级=%s 设备锁和sign_token已清除", cid, clid)
-    except Exception as e:
-        logger.warning("[设备锁] 清除失败: %s", e)
-        db.rollback()
     finally:
         cur.close(); db.close()
 
@@ -657,7 +637,7 @@ def att_manual():
     
     # ── P0: 验证课程归属 ──
     db_check = get_db(); cur_check = db_check.cursor()
-    cur_check.execute("SELECT id FROM courses WHERE id=%s AND teacher_id=%s", (cid, request.teacher_id))
+    cur_check.execute("SELECT id FROM courses WHERE id=? AND teacher_id=?", (cid, request.teacher_id))
     if not cur_check.fetchone():
         db_check.close()
         return err('无权操作此课程', 403)
@@ -680,7 +660,7 @@ def att_manual():
     # 这样用 LIKE '{sk}%' 查询时，手动签到记录也会被包含（如果 sk 是 QR 会话 key）
     record_sk=f"{sk}:{name}"
     db=get_db(); cur=db.cursor()
-    cur.execute("INSERT INTO attendance_records (session_key,course_id,class_id,student_name,sign_time) VALUES (%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE sign_time=VALUES(sign_time)",(record_sk,cid,clid,name,datetime.now()))
+    cur.execute("INSERT INTO attendance_records (session_key,course_id,class_id,student_name,sign_time) VALUES (?,?,?,?,?)",(record_sk,cid,clid,name,datetime.now()))
     db.close()
     # signed_names 始终从 DB 实时查询，无需手动更新内存
     return success({'message':'补签成功','session_key':sk})
@@ -694,16 +674,16 @@ def att_deduction():
     
     # ── P0: 验证课程归属 ──
     db_chk = get_db(); cur_chk = db_chk.cursor()
-    cur_chk.execute("SELECT id FROM courses WHERE id=%s AND teacher_id=%s", (cid, request.teacher_id))
+    cur_chk.execute("SELECT id FROM courses WHERE id=? AND teacher_id=?", (cid, request.teacher_id))
     if not cur_chk.fetchone():
         db_chk.close()
         return err('无权操作此课程', 403)
     db_chk.close()
     
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT id,name FROM students WHERE class_id=%s",(clid,))
+    cur.execute("SELECT id,name FROM students WHERE class_id=?",(clid,))
     students=cur.fetchall()
-    cur.execute("SELECT student_name FROM attendance_records WHERE course_id=%s AND class_id=%s",(cid,clid))
+    cur.execute("SELECT student_name FROM attendance_records WHERE course_id=? AND class_id=?",(cid,clid))
     signed=set(r['student_name'] for r in cur.fetchall())
     
     # ── P2: 排除已请假的学生的考勤扣分 ──
@@ -720,7 +700,7 @@ def att_deduction():
     for s in students:
         # 排除已签到和已请假的学生，只扣真正缺勤的
         if s['name'] not in signed and s['name'] not in leave_students:
-            cur.execute("INSERT INTO scores (course_id,class_id,student_id,student_name,att_score) VALUES (%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE att_score=VALUES(att_score)",(cid,clid,s['id'],s['name'],-deduct))
+            cur.execute("INSERT INTO scores (course_id,class_id,student_id,student_name,att_score) VALUES (?,?,?,?,?)",(cid,clid,s['id'],s['name'],-deduct))
             updated+=1
     db.close(); return success({'message':f'已为{updated}名未签到且未请假学生设置考勤扣分（已排除{len(leave_students)}名请假学生）'})
 
@@ -778,26 +758,19 @@ def att_save_report():
         absent_count = total - signed_count
 
         db2=get_db(); cur2=db2.cursor()
-        cur2.execute("SELECT name FROM courses WHERE id=%s",(cid,))
+        cur2.execute("SELECT name FROM courses WHERE id=?",(cid,))
         course_row=cur2.fetchone(); course_name=course_row['name'] if course_row else ''
-        cur2.execute("SELECT name FROM classes WHERE id=%s",(clid,))
+        cur2.execute("SELECT name FROM classes WHERE id=?",(clid,))
         class_row=cur2.fetchone(); class_name=class_row['name'] if class_row else ''
         logger.debug("course_name=%s, class_name=%s", course_name, class_name)
 
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime
         def _parse_ts(v):
             if not v: return None
-            v = str(v)
-            # 处理 ISO 8601 UTC 格式 (带 Z 后缀)
-            if v.endswith('Z'):
-                dt_utc = datetime.fromisoformat(v.replace('Z', '+00:00'))
-                # 转换为服务器本地时区
-                local_tz = datetime.now().astimezone().tzinfo
-                dt_local = dt_utc.astimezone(local_tz)
-                return dt_local.strftime('%Y-%m-%d %H:%M:%S')
-            # 处理已经是本地时间的格式：将 T 替换为空格后返回
-            v = v.replace('T', ' ')
-            return v[:19] if len(v) >= 19 else v
+            # 支持 ISO 8601 (2026-04-16T06:02:01.591Z) 和 MySQL 格式
+            v = str(v).replace('Z', '+00:00').replace('T', ' ')
+            try: return datetime.fromisoformat(v.replace('+00:00','')).strftime('%Y-%m-%d %H:%M:%S')
+            except: return v[:19] if len(v)>=19 else v
         started_at = _parse_ts(d.get('started_at',''))
         ended_at   = _parse_ts(d.get('ended_at',''))
 
@@ -851,11 +824,11 @@ def att_reports():
 @teacher_required
 def att_report_detail(rid):
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT * FROM attendance_reports WHERE id=%s AND teacher_id=%s",(rid,request.teacher_id))
+    cur.execute("SELECT * FROM attendance_reports WHERE id=? AND teacher_id=?",(rid,request.teacher_id))
     r=cur.fetchone()
     if not r: db.close(); return err('报告不存在',404)
     r=_row(r)
-    cur.execute("SELECT * FROM attendance_student_records WHERE report_id=%s ORDER BY student_name",(rid,))
+    cur.execute("SELECT * FROM attendance_student_records WHERE report_id=? ORDER BY student_name",(rid,))
     r['students']=_rows(cur.fetchall())
     db.close(); return success(r)
 
@@ -864,28 +837,28 @@ def att_report_detail(rid):
 def att_update_status():
     d=request.get_json() or {}
     db=get_db(); cur=db.cursor()
-    cur.execute("UPDATE attendance_student_records SET status=%s,note=%s,updated_by=%s,updated_at=NOW() WHERE id=%s",(d.get('status',''),d.get('note',''),request.teacher_id,int(d.get('record_id',0))))
+    cur.execute("UPDATE attendance_student_records SET status=?,note=?,updated_by=?,updated_at=datetime('now') WHERE id=?",(d.get('status',''),d.get('note',''),request.teacher_id,int(d.get('record_id',0))))
     db.close(); return success()
 
 @app.route('/api/attendance/report/<int:rid>', methods=['DELETE'])
 @teacher_required
 def att_delete_report(rid):
     db=get_db(); cur=db.cursor()
-    cur.execute("DELETE FROM attendance_student_records WHERE report_id=%s",(rid,))
-    cur.execute("DELETE FROM attendance_reports WHERE id=%s AND teacher_id=%s",(rid,request.teacher_id))
+    cur.execute("DELETE FROM attendance_student_records WHERE report_id=?",(rid,))
+    cur.execute("DELETE FROM attendance_reports WHERE id=? AND teacher_id=?",(rid,request.teacher_id))
     db.close(); return success()
 
 # ======= 作业管理（教师端） =======
 def _homework_detail(hw, cur):
     """将单个作业 dict 补全 attachments / 评分脚本 / 统计"""
     hid=hw['id']
-    cur.execute("SELECT * FROM homework_attachments WHERE homework_id=%s",(hid,))
+    cur.execute("SELECT * FROM homework_attachments WHERE homework_id=?",(hid,))
     hw['attachments']=_rows(cur.fetchall())
-    cur.execute("SELECT * FROM homework_grading_scripts WHERE homework_id=%s",(hid,))
+    cur.execute("SELECT * FROM homework_grading_scripts WHERE homework_id=?",(hid,))
     gs=_row(cur.fetchone()); hw['grading_script_info']={}
     if gs:
         hw['grading_script_info']={'homework_id':hid,'script_name':os.path.basename(gs.get('script_path','')),'auto_grade_enabled':bool(hw.get('auto_grade_enabled')),'has_grading_script':True}
-    cur.execute("SELECT COUNT(*) as total,SUM(CASE WHEN score IS NOT NULL OR auto_score IS NOT NULL THEN 1 ELSE 0 END) as graded FROM homework_submissions WHERE homework_id=%s",(hid,))
+    cur.execute("SELECT COUNT(*) as total,SUM(CASE WHEN score IS NOT NULL OR auto_score IS NOT NULL THEN 1 ELSE 0 END) as graded FROM homework_submissions WHERE homework_id=?",(hid,))
     st=cur.fetchone(); hw['total_submissions']=st['total']; hw['graded_count']=st['graded']
     return hw
 
@@ -893,7 +866,7 @@ def _homework_detail(hw, cur):
 @teacher_required
 def get_homework_detail(hid):
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT h.*,c.name as course_name,cl.name as class_name FROM homework h JOIN courses c ON c.id=h.course_id LEFT JOIN classes cl ON cl.id=h.class_id WHERE h.id=%s AND c.teacher_id=%s",(hid,request.teacher_id))
+    cur.execute("SELECT h.*,c.name as course_name,cl.name as class_name FROM homework h JOIN courses c ON c.id=h.course_id LEFT JOIN classes cl ON cl.id=h.class_id WHERE h.id=? AND c.teacher_id=?",(hid,request.teacher_id))
     hw=_row(cur.fetchone())
     if not hw: return err('作业不存在或无权限',404)
     hw=_homework_detail(hw,cur)
@@ -912,15 +885,15 @@ def get_homework_list():
     cur.execute(sql,params); homeworks=_rows(cur.fetchall())
     for hw in homeworks:
         hid=hw['id']
-        cur.execute("SELECT * FROM homework_attachments WHERE homework_id=%s",(hid,))
+        cur.execute("SELECT * FROM homework_attachments WHERE homework_id=?",(hid,))
         hw['attachments']=_rows(cur.fetchall())
-        cur.execute("SELECT * FROM homework_grading_scripts WHERE homework_id=%s",(hid,))
+        cur.execute("SELECT * FROM homework_grading_scripts WHERE homework_id=?",(hid,))
         gs=_row(cur.fetchone())
         if gs:
             hw['grading_script_info']={'homework_id':hid,'script_name':os.path.basename(gs.get('script_path','')),'auto_grade_enabled':bool(hw.get('auto_grade_enabled')),'has_grading_script':True}
         else:
             hw['grading_script_info']={'homework_id':hid,'has_grading_script':False,'auto_grade_enabled':bool(hw.get('auto_grade_enabled'))}
-        cur.execute("SELECT COUNT(*) as total,SUM(CASE WHEN score IS NOT NULL OR auto_score IS NOT NULL THEN 1 ELSE 0 END) as graded FROM homework_submissions WHERE homework_id=%s",(hid,))
+        cur.execute("SELECT COUNT(*) as total,SUM(CASE WHEN score IS NOT NULL OR auto_score IS NOT NULL THEN 1 ELSE 0 END) as graded FROM homework_submissions WHERE homework_id=?",(hid,))
         st=cur.fetchone(); hw['total_submissions']=st['total']; hw['graded_count']=st['graded']
     db.close(); return success(homeworks)
 
@@ -952,7 +925,7 @@ def create_homework():
         cid=str(d.get('course_id','')); clid=str(d.get('class_id','')); dl=d.get('deadline',''); ts=int(d.get('total_score',100))
     if not title or not cid: return err('标题和课程不能为空')
     db=get_db(); cur=db.cursor()
-    cur.execute("INSERT INTO homework (course_id,class_id,teacher_id,title,content,deadline,total_score,is_published) VALUES (%s,%s,%s,%s,%s,%s,%s,1)",(cid,clid,request.teacher_id,title,content,_parse_deadline(dl),ts))
+    cur.execute("INSERT INTO homework (course_id,class_id,teacher_id,title,content,deadline,total_score,is_published) VALUES (?,?,?,?,?,?,?,1)",(cid,clid,request.teacher_id,title,content,_parse_deadline(dl),ts))
     hid=cur.lastrowid
     attachments = []
     if 'multipart' in ct:
@@ -961,7 +934,7 @@ def create_homework():
                 fn=f.filename; ext=os.path.splitext(fn)[1]; sn=f"{uuid.uuid4().hex}{ext}"
                 fp=os.path.join(UPLOAD_DIR,'homework',sn); f.save(fp)
                 sz=os.path.getsize(fp)
-                cur.execute("INSERT INTO homework_attachments (homework_id,file_name,file_path,file_size) VALUES (%s,%s,%s,%s)",(hid,fn,fp,sz))
+                cur.execute("INSERT INTO homework_attachments (homework_id,file_name,file_path,file_size) VALUES (?,?,?,?)",(hid,fn,fp,sz))
                 attachments.append({'id':cur.lastrowid,'filename':fn,'file_path':fp,'file_size':sz})
     
     # 创建作业通知，通知班级所有学生
@@ -982,27 +955,27 @@ def update_homework(hid):
         d=request.get_json() or {}; title=(d.get('title') or '').strip(); content=(d.get('content') or '').strip()
         dl=d.get('deadline',''); ts=int(d.get('total_score',100))
     db=get_db(); cur=db.cursor()
-    cur.execute("UPDATE homework SET title=%s,content=%s,deadline=%s,total_score=%s WHERE id=%s AND teacher_id=%s",(title,content,_parse_deadline(dl),ts,hid,request.teacher_id))
+    cur.execute("UPDATE homework SET title=?,content=?,deadline=?,total_score=? WHERE id=? AND teacher_id=?",(title,content,_parse_deadline(dl),ts,hid,request.teacher_id))
     if 'multipart' in ct:
         for f in request.files.getlist('files'):
             if f.filename:
                 fn=f.filename; sn=f"{uuid.uuid4().hex}{os.path.splitext(fn)[1]}"
                 fp=os.path.join(UPLOAD_DIR,'homework',sn); f.save(fp)
-                cur.execute("INSERT INTO homework_attachments (homework_id,file_name,file_path,file_size) VALUES (%s,%s,%s,%s)",(hid,fn,fp,os.path.getsize(fp)))
+                cur.execute("INSERT INTO homework_attachments (homework_id,file_name,file_path,file_size) VALUES (?,?,?,?)",(hid,fn,fp,os.path.getsize(fp)))
     db.close(); return success()
 
 @app.route('/api/homework/<int:hid>', methods=['DELETE'])
 @teacher_required
 def delete_homework(hid):
     db=get_db(); cur=db.cursor()
-    cur.execute("DELETE FROM homework WHERE id=%s AND teacher_id=%s",(hid,request.teacher_id))
+    cur.execute("DELETE FROM homework WHERE id=? AND teacher_id=?",(hid,request.teacher_id))
     db.close(); return success()
 
 @app.route('/api/homework/attachments/<int:aid>', methods=['DELETE'])
 @teacher_required
 def delete_hw_attachment(aid):
     db=get_db(); cur=db.cursor()
-    cur.execute("DELETE FROM homework_attachments WHERE id=%s",(aid,))
+    cur.execute("DELETE FROM homework_attachments WHERE id=?",(aid,))
     db.close(); return success()
 
 # ======= 课程资源管理 =======
@@ -1030,7 +1003,7 @@ def get_resources():
 def delete_resource(rid):
     """删除课程资源"""
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT file_path FROM course_resources WHERE id=%s AND teacher_id=%s",(rid,request.teacher_id))
+    cur.execute("SELECT file_path FROM course_resources WHERE id=? AND teacher_id=?",(rid,request.teacher_id))
     r=cur.fetchone()
     if not r: db.close(); return err('资源不存在',404)
     # 删除物理文件
@@ -1038,7 +1011,7 @@ def delete_resource(rid):
         fp=os.path.join(BASE_DIR,r['file_path'])
         if os.path.exists(fp): os.remove(fp)
     except: pass
-    cur.execute("DELETE FROM course_resources WHERE id=%s",(rid,))
+    cur.execute("DELETE FROM course_resources WHERE id=?",(rid,))
     db.close(); return success()
 
 @app.route('/api/resources/upload', methods=['POST'])
@@ -1076,7 +1049,7 @@ def upload_resource():
 def download_resource(rid):
     """下载课程资源"""
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT * FROM course_resources WHERE id=%s",(rid,))
+    cur.execute("SELECT * FROM course_resources WHERE id=?",(rid,))
     r=cur.fetchone()
     if not r: db.close(); return err('资源不存在',404)
     fpath=os.path.join(BASE_DIR,r['file_path'])
@@ -1092,7 +1065,7 @@ def get_student_resources():
     term=request.args.get('term','')
     db=get_db(); cur=db.cursor()
     # 获取学生可选的课程
-    cur.execute("SELECT DISTINCT c.id,c.name,c.term FROM courses c JOIN course_classes cc ON cc.course_id=c.id JOIN students s ON s.class_id=cc.class_id WHERE s.id=%s",(request.teacher_id,))
+    cur.execute("SELECT DISTINCT c.id,c.name,c.term FROM courses c JOIN course_classes cc ON cc.course_id=c.id JOIN students s ON s.class_id=cc.class_id WHERE s.id=?",(request.teacher_id,))
     courses=cur.fetchall()
     if not courses: return success([])
     course_ids=[str(c['id']) for c in courses]
@@ -1116,14 +1089,14 @@ def student_download_resource(rid):
     """学生端下载课程资源"""
     db=get_db(); cur=db.cursor()
     # 获取学生可选的课程
-    cur.execute("SELECT DISTINCT c.id FROM courses c JOIN course_classes cc ON cc.course_id=c.id JOIN students s ON s.class_id=cc.class_id WHERE s.id=%s",(request.teacher_id,))
+    cur.execute("SELECT DISTINCT c.id FROM courses c JOIN course_classes cc ON cc.course_id=c.id JOIN students s ON s.class_id=cc.class_id WHERE s.id=?",(request.teacher_id,))
     courses=cur.fetchall()
     if not courses:
         db.close(); return err('无权限访问',403)
     course_ids=[str(c['id']) for c in courses]
     # 验证资源属于该学生的课程
     placeholders=','.join(['%s']*len(course_ids))
-    cur.execute(f"SELECT * FROM course_resources WHERE id=%s AND course_id IN ({placeholders})",[rid]+course_ids)
+    cur.execute(f"SELECT * FROM course_resources WHERE id=? AND course_id IN ({placeholders})",[rid]+course_ids)
     r=cur.fetchone()
     if not r:
         db.close(); return err('资源不存在或无权限',404)
@@ -1136,21 +1109,21 @@ def student_download_resource(rid):
 @teacher_required
 def get_hw_submissions(hid):
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT h.*,c.teacher_id FROM homework h JOIN courses c ON c.id=h.course_id WHERE h.id=%s",(hid,))
+    cur.execute("SELECT h.*,c.teacher_id FROM homework h JOIN courses c ON c.id=h.course_id WHERE h.id=?",(hid,))
     hw=cur.fetchone()
     if not hw: db.close(); return err('作业不存在',404)
     clid=str(hw['class_id']) if hw['class_id'] else ''
     if clid:
-        cur.execute("SELECT id,name FROM students WHERE class_id=%s ORDER BY name",(clid,))
+        cur.execute("SELECT id,name FROM students WHERE class_id=? ORDER BY name",(clid,))
         students={str(r['id']):r['name'] for r in cur.fetchall()}
         total=len(students)
     else: students={}; total=0
-    cur.execute("SELECT * FROM homework_submissions WHERE homework_id=%s ORDER BY submitted_at",(hid,))
+    cur.execute("SELECT * FROM homework_submissions WHERE homework_id=? ORDER BY submitted_at",(hid,))
     subs=_rows(cur.fetchall())
     for s in subs:
-        cur.execute("SELECT * FROM submission_attachments WHERE submission_id=%s",(s['id'],))
+        cur.execute("SELECT * FROM submission_attachments WHERE submission_id=?",(s['id'],))
         s['attachments']=_rows(cur.fetchall())
-        cur.execute("SELECT * FROM grade_attachments WHERE submission_id=%s",(s['id'],))
+        cur.execute("SELECT * FROM grade_attachments WHERE submission_id=?",(s['id'],))
         s['grade_attachments']=_rows(cur.fetchall())
     graded=sum(1 for s in subs if s.get('score') is not None or s.get('auto_score') is not None)
     db.close(); return success({'submissions':subs,'total_students':total,'graded_count':graded})
@@ -1163,21 +1136,13 @@ def grade_hw(hid):
         sid=int(request.form.get('student_id',0)); score=float(request.form.get('score',0)); feedback=request.form.get('feedback','').strip()
     else:
         d=request.get_json() or {}; sid=int(d.get('student_id',0)); score=float(d.get('score',0)); feedback=(d.get('feedback') or '').strip()
-    # 根据分数自动生成评语（用户未填写时）
-    if not feedback:
-        if score >= 80:
-            feedback = '优秀，继续保持！'
-        elif score >= 60:
-            feedback = '良好，还有进步空间！'
-        else:
-            feedback = '继续加油，争取更好成绩！'
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT * FROM homework_submissions WHERE homework_id=%s AND student_id=%s",(hid,sid))
+    cur.execute("SELECT * FROM homework_submissions WHERE homework_id=? AND student_id=?",(hid,sid))
     sub=cur.fetchone()
     if not sub: db.close(); return err('未找到该学生的提交记录')
-    cur.execute("UPDATE homework_submissions SET score=%s,feedback=%s,graded_at=NOW() WHERE homework_id=%s AND student_id=%s",(score,feedback,hid,sid))
+    cur.execute("UPDATE homework_submissions SET score=?,feedback=?,graded_at=datetime('now') WHERE homework_id=? AND student_id=?",(score,feedback,hid,sid))
     # 更新排行榜（重新统计该学生每个作业的最新分数）
-    cur.execute("SELECT h.class_id,hs.student_id,hs.student_name FROM homework h JOIN homework_submissions hs ON hs.homework_id=h.id WHERE hs.id=%s",(sub['id'],))
+    cur.execute("SELECT h.class_id,hs.student_id,hs.student_name FROM homework h JOIN homework_submissions hs ON hs.homework_id=h.id WHERE hs.id=?",(sub['id'],))
     info=cur.fetchone()
     if info and info['class_id']:
         cur.execute("""
@@ -1193,12 +1158,12 @@ def grade_hw(hid):
         """, (info['student_id'], info['class_id']))
         stats=cur.fetchone()
         new_total=float(stats['total'] or 0); new_count=int(stats['cnt'] or 0)
-        cur.execute("SELECT id FROM homework_score_ranking WHERE class_id=%s AND student_id=%s",(info['class_id'],info['student_id']))
+        cur.execute("SELECT id FROM homework_score_ranking WHERE class_id=? AND student_id=?",(info['class_id'],info['student_id']))
         ex=cur.fetchone()
         if ex:
-            cur.execute("UPDATE homework_score_ranking SET total_score=%s,homework_count=%s WHERE id=%s",(new_total,new_count,ex['id']))
+            cur.execute("UPDATE homework_score_ranking SET total_score=?,homework_count=? WHERE id=?",(new_total,new_count,ex['id']))
         else:
-            cur.execute("INSERT INTO homework_score_ranking (class_id,student_id,student_name,total_score,homework_count) VALUES (%s,%s,%s,%s,%s)",(info['class_id'],info['student_id'],info['student_name'],new_total,new_count))
+            cur.execute("INSERT INTO homework_score_ranking (class_id,student_id,student_name,total_score,homework_count) VALUES (?,?,?,?,?)",(info['class_id'],info['student_id'],info['student_name'],new_total,new_count))
     db.close(); return success({'message':'评分成功'})
 
 @app.route('/api/homework/ranking', methods=['GET'])
@@ -1246,7 +1211,7 @@ def _run_grading(script_path, files, hid, sid, total_score):
     """运行 Python 评分脚本，自动归一化分数并写回 homework_submissions"""
     try:
         db=get_db(); cur=db.cursor()
-        cur.execute("UPDATE homework_submissions SET grading_status='grading' WHERE id=%s",(sid,))
+        cur.execute("UPDATE homework_submissions SET grading_status='grading' WHERE id=?",(sid,))
         db.close()
         # 取第一个文件的绝对路径传给脚本（评分脚本规范：stdin 接收 file_path）
         # file_path 在数据库中存的是 "submissions/xxx.xlsx"（相对 uploads 目录）
@@ -1279,8 +1244,8 @@ def _run_grading(script_path, files, hid, sid, total_score):
         else:
             msg=script_msg
         db2=get_db(); cur2=db2.cursor()
-        cur2.execute("UPDATE homework_submissions SET grading_status='done',auto_score=%s,auto_grade_message=%s,auto_grade_details=%s,score=%s,graded_at=NOW() WHERE id=%s",(auto_score,msg,json.dumps(details,ensure_ascii=False),norm,sid))
-        cur2.execute("SELECT h.class_id,hs.student_id,hs.student_name FROM homework h JOIN homework_submissions hs ON hs.homework_id=h.id WHERE hs.id=%s",(sid,))
+        cur2.execute("UPDATE homework_submissions SET grading_status='done',auto_score=?,auto_grade_message=?,auto_grade_details=?,score=?,graded_at=datetime('now') WHERE id=?",(auto_score,msg,json.dumps(details,ensure_ascii=False),norm,sid))
+        cur2.execute("SELECT h.class_id,hs.student_id,hs.student_name FROM homework h JOIN homework_submissions hs ON hs.homework_id=h.id WHERE hs.id=?",(sid,))
         info=cur2.fetchone()
         if info and info['class_id']:
             # 重新统计该学生每个作业的最新分数（取每个 student_id+homework_id 最后一次提交的分数）
@@ -1298,19 +1263,19 @@ def _run_grading(script_path, files, hid, sid, total_score):
             stats = cur2.fetchone()
             new_total = float(stats['total'] or 0)
             new_count = int(stats['cnt'] or 0)
-            cur2.execute("SELECT id FROM homework_score_ranking WHERE class_id=%s AND student_id=%s",(info['class_id'],info['student_id']))
+            cur2.execute("SELECT id FROM homework_score_ranking WHERE class_id=? AND student_id=?",(info['class_id'],info['student_id']))
             ex=cur2.fetchone()
             if ex:
-                cur2.execute("UPDATE homework_score_ranking SET total_score=%s, homework_count=%s WHERE id=%s",(new_total,new_count,ex['id']))
+                cur2.execute("UPDATE homework_score_ranking SET total_score=?, homework_count=? WHERE id=?",(new_total,new_count,ex['id']))
             else:
-                cur2.execute("INSERT INTO homework_score_ranking (class_id,student_id,student_name,total_score,homework_count) VALUES (%s,%s,%s,%s,%s)",(info['class_id'],info['student_id'],info['student_name'],new_total,new_count))
+                cur2.execute("INSERT INTO homework_score_ranking (class_id,student_id,student_name,total_score,homework_count) VALUES (?,?,?,?,?)",(info['class_id'],info['student_id'],info['student_name'],new_total,new_count))
 
         db2.close()
     except subprocess.TimeoutExpired:
-        db3=get_db(); cur3=db3.cursor(); cur3.execute("UPDATE homework_submissions SET grading_status='failed' WHERE id=%s",(sid,)); db3.close()
+        db3=get_db(); cur3=db3.cursor(); cur3.execute("UPDATE homework_submissions SET grading_status='failed' WHERE id=?",(sid,)); db3.close()
     except Exception as e:
         try:
-            db4=get_db(); cur4=db4.cursor(); cur4.execute("UPDATE homework_submissions SET grading_status='failed',auto_grade_message=%s WHERE id=%s",(str(e),sid)); db4.close()
+            db4=get_db(); cur4=db4.cursor(); cur4.execute("UPDATE homework_submissions SET grading_status='failed',auto_grade_message=? WHERE id=?",(str(e),sid)); db4.close()
         except: pass
         # 写入文件日志便于追踪
         logger.exception("[ERROR auto_grade] sub_id=%s", sid)
@@ -1325,18 +1290,18 @@ def upload_grading_script(hid):
     sn=f"grading_{hid}_{uuid.uuid4().hex[:8]}.py"
     fp=os.path.join(UPLOAD_DIR,'homework',sn); f.save(fp)
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT id FROM homework_grading_scripts WHERE homework_id=%s",(hid,))
+    cur.execute("SELECT id FROM homework_grading_scripts WHERE homework_id=?",(hid,))
     ex=cur.fetchone()
-    if ex: cur.execute("UPDATE homework_grading_scripts SET script_path=%s,created_at=NOW() WHERE id=%s",(fp,ex['id']))
-    else: cur.execute("INSERT INTO homework_grading_scripts (homework_id,script_path,language,timeout_seconds,created_by) VALUES (%s,%s,'python',60,%s)",(hid,fp,request.teacher_id))
-    cur.execute("UPDATE homework SET has_grading_script=1 WHERE id=%s",(hid,))
+    if ex: cur.execute("UPDATE homework_grading_scripts SET script_path=?,created_at=datetime('now') WHERE id=?",(fp,ex['id']))
+    else: cur.execute("INSERT INTO homework_grading_scripts (homework_id,script_path,language,timeout_seconds,created_by) VALUES (?,?,'python',60,?)",(hid,fp,request.teacher_id))
+    cur.execute("UPDATE homework SET has_grading_script=1 WHERE id=?",(hid,))
     enable_auto=request.form.get('enable_auto','false').lower()=='true'
-    cur.execute("UPDATE homework SET auto_grade_enabled=%s WHERE id=%s",(1 if enable_auto else 0,hid))
+    cur.execute("UPDATE homework SET auto_grade_enabled=? WHERE id=?",(1 if enable_auto else 0,hid))
     if regrade_all:
-        cur.execute("UPDATE homework_submissions SET grading_status='none',score=NULL WHERE homework_id=%s",(hid,))
-        cur.execute("SELECT total_score FROM homework WHERE id=%s",(hid,))
+        cur.execute("UPDATE homework_submissions SET grading_status='none',score=NULL WHERE homework_id=?",(hid,))
+        cur.execute("SELECT total_score FROM homework WHERE id=?",(hid,))
         ts=(cur.fetchone() or {}).get('total_score') or 100
-        cur.execute("SELECT hs.id,sa.file_path,sa.file_name FROM homework_submissions hs LEFT JOIN submission_attachments sa ON sa.submission_id=hs.id WHERE hs.homework_id=%s",(hid,))
+        cur.execute("SELECT hs.id,sa.file_path,sa.file_name FROM homework_submissions hs LEFT JOIN submission_attachments sa ON sa.submission_id=hs.id WHERE hs.homework_id=?",(hid,))
         sub_files={}
         for r in cur.fetchall():
             sid2=r['id']
@@ -1368,7 +1333,7 @@ def get_grading_script(hid):
 @teacher_required
 def get_grading_script_content(hid):
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT script_path FROM homework_grading_scripts WHERE homework_id=%s",(hid,))
+    cur.execute("SELECT script_path FROM homework_grading_scripts WHERE homework_id=?",(hid,))
     row=cur.fetchone(); db.close()
     if not row or not row['script_path']: return err('脚本不存在',404)
     fp=row['script_path']
@@ -1384,7 +1349,7 @@ def get_grading_script_content(hid):
 @teacher_required
 def download_grading_script(hid):
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT script_path FROM homework_grading_scripts WHERE homework_id=%s",(hid,))
+    cur.execute("SELECT script_path FROM homework_grading_scripts WHERE homework_id=?",(hid,))
     row=cur.fetchone(); db.close()
     if not row or not row['script_path']: return err('脚本不存在',404)
     fp=row['script_path']
@@ -1396,23 +1361,23 @@ def download_grading_script(hid):
 def toggle_grading_auto(hid):
     d=request.get_json() or {}; enable=bool(d.get('enable',False))
     db=get_db(); cur=db.cursor()
-    cur.execute("UPDATE homework SET auto_grade_enabled=%s WHERE id=%s",(1 if enable else 0,hid))
-    if not enable: cur.execute("UPDATE homework_submissions SET grading_status='none',score=NULL WHERE homework_id=%s",(hid,))
+    cur.execute("UPDATE homework SET auto_grade_enabled=? WHERE id=?",(1 if enable else 0,hid))
+    if not enable: cur.execute("UPDATE homework_submissions SET grading_status='none',score=NULL WHERE homework_id=?",(hid,))
     else:
-        cur.execute("SELECT total_score FROM homework WHERE id=%s",(hid,))
+        cur.execute("SELECT total_score FROM homework WHERE id=?",(hid,))
         ts=(cur.fetchone() or {}).get('total_score') or 100
-        cur.execute("SELECT id FROM homework_submissions WHERE homework_id=%s AND grading_status IN ('none','pending','failed')",(hid,))
+        cur.execute("SELECT id FROM homework_submissions WHERE homework_id=? AND grading_status IN ('none','pending','failed')",(hid,))
         for r in cur.fetchall():
-            cur.execute("UPDATE homework_submissions SET grading_status='pending' WHERE id=%s",(r['id'],))
+            cur.execute("UPDATE homework_submissions SET grading_status='pending' WHERE id=?",(r['id'],))
     db.close(); return success({'enabled':enable})
 
 @app.route('/api/homework/<int:hid>/grading_script', methods=['DELETE'])
 @teacher_required
 def delete_grading_script(hid):
     db=get_db(); cur=db.cursor()
-    cur.execute("DELETE FROM homework_grading_scripts WHERE homework_id=%s",(hid,))
-    cur.execute("UPDATE homework SET has_grading_script=0,auto_grade_enabled=0 WHERE id=%s",(hid,))
-    cur.execute("UPDATE homework_submissions SET grading_status='none' WHERE homework_id=%s",(hid,))
+    cur.execute("DELETE FROM homework_grading_scripts WHERE homework_id=?",(hid,))
+    cur.execute("UPDATE homework SET has_grading_script=0,auto_grade_enabled=0 WHERE id=?",(hid,))
+    cur.execute("UPDATE homework_submissions SET grading_status='none' WHERE homework_id=?",(hid,))
     db.close(); return success()
 
 @app.route('/api/homework/submissions/<int:sid>/grading_status', methods=['GET'])
@@ -1420,7 +1385,7 @@ def get_grading_status(sid):
     token=get_token_param(request)
     if not token: return err('未授权',401)
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT grading_status,auto_score,auto_grade_message FROM homework_submissions WHERE id=%s",(sid,))
+    cur.execute("SELECT grading_status,auto_score,auto_grade_message FROM homework_submissions WHERE id=?",(sid,))
     row=cur.fetchone(); db.close()
     if not row: return err('未找到提交',404)
     return success(_row(row))
@@ -1431,7 +1396,7 @@ def dl_hw_att(aid):
     token=get_token_param(request)
     if not token: return err('未授权',401)
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT file_path,file_name FROM homework_attachments WHERE id=%s",(aid,))
+    cur.execute("SELECT file_path,file_name FROM homework_attachments WHERE id=?",(aid,))
     att=cur.fetchone(); db.close()
     if not att: return err('文件不存在',404)
     fp=att['file_path']
@@ -1444,7 +1409,7 @@ def dl_sub_att(aid):
     token=get_token_param(request)
     if not token: return err('未授权',401)
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT file_path,file_name FROM submission_attachments WHERE id=%s",(aid,))
+    cur.execute("SELECT file_path,file_name FROM submission_attachments WHERE id=?",(aid,))
     att=cur.fetchone(); db.close()
     if not att: return err('文件不存在',404)
     fp=att['file_path']
@@ -1457,7 +1422,7 @@ def dl_grd_att(aid):
     token=get_token_param(request)
     if not token: return err('未授权',401)
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT file_path,file_name FROM grade_attachments WHERE id=%s",(aid,))
+    cur.execute("SELECT file_path,file_name FROM grade_attachments WHERE id=?",(aid,))
     att=cur.fetchone(); db.close()
     if not att: return err('文件不存在',404)
     fp=att['file_path']
@@ -1477,7 +1442,7 @@ def stu_get_notifications():
     # 清理30天前已读的通知
     cur.execute("""
         DELETE FROM student_notifications 
-        WHERE student_id=%s AND is_read=1 AND created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)
+        WHERE student_id=%s AND is_read=1 AND created_at < DATE_SUB(datetime('now'), INTERVAL 30 DAY)
     """, (student_id,))
     
     # 获取通知列表
@@ -1491,7 +1456,7 @@ def stu_get_notifications():
     notifications = _rows(cur.fetchall())
     
     # 统计未读数
-    cur.execute("SELECT COUNT(*) as cnt FROM student_notifications WHERE student_id=%s AND is_read=0", (student_id,))
+    cur.execute("SELECT COUNT(*) as cnt FROM student_notifications WHERE student_id=? AND is_read=0", (student_id,))
     unread_count = cur.fetchone()['cnt']
     
     db.close()
@@ -1503,7 +1468,7 @@ def stu_delete_notification(nid):
     """删除单条通知"""
     db = get_db()
     cur = db.cursor()
-    cur.execute("DELETE FROM student_notifications WHERE id=%s AND student_id=%s", (nid, request.teacher_id))
+    cur.execute("DELETE FROM student_notifications WHERE id=? AND student_id=?", (nid, request.teacher_id))
     db.close()
     return success()
 
@@ -1513,7 +1478,7 @@ def stu_clear_notifications():
     """清空所有已读通知"""
     db = get_db()
     cur = db.cursor()
-    cur.execute("DELETE FROM student_notifications WHERE student_id=%s AND is_read=1", (request.teacher_id,))
+    cur.execute("DELETE FROM student_notifications WHERE student_id=? AND is_read=1", (request.teacher_id,))
     deleted = cur.rowcount
     db.close()
     return success({'deleted': deleted})
@@ -1527,9 +1492,9 @@ def stu_mark_notifications_read():
     db = get_db()
     cur = db.cursor()
     if nid:
-        cur.execute("UPDATE student_notifications SET is_read=1 WHERE id=%s AND student_id=%s", (nid, request.teacher_id))
+        cur.execute("UPDATE student_notifications SET is_read=1 WHERE id=? AND student_id=?", (nid, request.teacher_id))
     else:
-        cur.execute("UPDATE student_notifications SET is_read=1 WHERE student_id=%s", (request.teacher_id,))
+        cur.execute("UPDATE student_notifications SET is_read=1 WHERE student_id=?", (request.teacher_id,))
     db.close()
     return success()
 
@@ -1539,7 +1504,7 @@ def _create_homework_notifications(hw_id, course_id, class_id, title, deadline):
     cur = db.cursor()
     
     # 获取班级所有学生
-    cur.execute("SELECT id FROM students WHERE class_id=%s", (class_id,))
+    cur.execute("SELECT id FROM students WHERE class_id=?", (class_id,))
     students = cur.fetchall()
     
     for stu in students:
@@ -1562,7 +1527,7 @@ def _check_deadline_reminders(student_id):
         FROM homework h
         JOIN courses c ON c.id = h.course_id
         WHERE h.class_id = (SELECT class_id FROM students WHERE id=%s)
-        AND h.deadline BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)
+        AND h.deadline BETWEEN datetime('now') AND DATE_ADD(datetime('now'), INTERVAL 24 HOUR)
         AND h.is_published = 1
         AND NOT EXISTS (
             SELECT 1 FROM homework_submissions hs 
@@ -1612,7 +1577,7 @@ def stu_profile():
 def stu_update_profile():
     d=request.get_json() or {}
     db=get_db(); cur=db.cursor()
-    cur.execute("UPDATE student_accounts SET avatar=%s,bio=%s WHERE student_id=%s",(d.get('avatar',''),d.get('bio',''),request.teacher_id))
+    cur.execute("UPDATE student_accounts SET avatar=?,bio=? WHERE student_id=?",(d.get('avatar',''),d.get('bio',''),request.teacher_id))
     db.close(); return success()
 
 @app.route('/api/student/change_password', methods=['POST'])
@@ -1621,18 +1586,18 @@ def stu_change_password():
     d=request.get_json() or {}; old_p=d.get('old_password',''); new_p=d.get('new_password','')
     if not old_p or not new_p: return err('旧密码和新密码都不能为空')
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT password FROM student_accounts WHERE student_id=%s",(request.teacher_id,))
+    cur.execute("SELECT password FROM student_accounts WHERE student_id=?",(request.teacher_id,))
     u=cur.fetchone()
     if not u or not bcrypt.checkpw(old_p.encode(),u['password'].encode()): db.close(); return err('旧密码错误')
     new_hash=bcrypt.hashpw(new_p.encode(),bcrypt.gensalt()).decode()
-    cur.execute("UPDATE student_accounts SET password=%s WHERE student_id=%s",(new_hash,request.teacher_id))
+    cur.execute("UPDATE student_accounts SET password=? WHERE student_id=?",(new_hash,request.teacher_id))
     db.close(); return success()
 
 @app.route('/api/student/homework', methods=['GET'])
 @student_required
 def stu_homework():
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT class_id FROM students WHERE id=%s",(request.teacher_id,))
+    cur.execute("SELECT class_id FROM students WHERE id=?",(request.teacher_id,))
     row=cur.fetchone()
     if not row: db.close(); return err('未找到班级信息',404)
     clid=str(row['class_id'])
@@ -1650,13 +1615,13 @@ def stu_homework():
     """, (clid, clid))
     hws=_rows(cur.fetchall())
     for hw in hws:
-        cur.execute("SELECT * FROM homework_attachments WHERE homework_id=%s",(hw['id'],))
+        cur.execute("SELECT * FROM homework_attachments WHERE homework_id=?",(hw['id'],))
         hw['attachments']=_rows(cur.fetchall())
-        cur.execute("SELECT * FROM homework_submissions WHERE homework_id=%s AND student_id=%s",(hw['id'],request.teacher_id))
+        cur.execute("SELECT * FROM homework_submissions WHERE homework_id=? AND student_id=?",(hw['id'],request.teacher_id))
         sub=cur.fetchone()
         if sub:
             hw['submitted']=True; hw['submission']=_row(sub)
-            cur.execute("SELECT * FROM submission_attachments WHERE submission_id=%s",(sub['id'],))
+            cur.execute("SELECT * FROM submission_attachments WHERE submission_id=?",(sub['id'],))
             hw['submission']['attachments']=_rows(cur.fetchall())
             # 把 submission 的评分字段拍平到 hw 层（与前端模板保持一致）
             for k in ['grading_status','score','auto_score','auto_grade_message','auto_grade_details','feedback','graded_at']:
@@ -1678,7 +1643,7 @@ def stu_homework():
 def stu_courses():
     db=get_db(); cur=db.cursor()
     term_filter = request.args.get('term','')
-    cur.execute("SELECT class_id FROM students WHERE id=%s",(request.teacher_id,))
+    cur.execute("SELECT class_id FROM students WHERE id=?",(request.teacher_id,))
     row=cur.fetchone()
     if not row: db.close(); return err('未找到班级信息',404)
     clid=str(row['class_id'])
@@ -1728,26 +1693,26 @@ def stu_submit_homework(hid):
     else:
         content=(request.get_json() or {}).get('content','')
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT name FROM students WHERE id=%s",(request.teacher_id,))
+    cur.execute("SELECT name FROM students WHERE id=?",(request.teacher_id,))
     stu=cur.fetchone()
     stu_name=stu['name'] if stu else ''
-    cur.execute("SELECT id FROM homework_submissions WHERE homework_id=%s AND student_id=%s",(hid,request.teacher_id))
+    cur.execute("SELECT id FROM homework_submissions WHERE homework_id=? AND student_id=?",(hid,request.teacher_id))
     existing=cur.fetchone()
     if existing:
         sub_id=existing['id']
-        cur.execute("UPDATE homework_submissions SET content=%s,submitted_at=NOW(),student_name=%s,grading_status='none',score=NULL WHERE id=%s",(content,stu_name,sub_id))
+        cur.execute("UPDATE homework_submissions SET content=?,submitted_at=datetime('now'),student_name=?,grading_status='none',score=NULL WHERE id=?",(content,stu_name,sub_id))
         # 重新提交：删除旧附件文件及记录
         old_file_list = request.files.getlist('files') or request.files.getlist('file') or []
         if 'multipart' in ct and old_file_list and any(f.filename for f in old_file_list):
-            cur.execute("SELECT file_path FROM submission_attachments WHERE submission_id=%s",(sub_id,))
+            cur.execute("SELECT file_path FROM submission_attachments WHERE submission_id=?",(sub_id,))
             for old in cur.fetchall():
                 try:
                     if old['file_path'] and os.path.exists(old['file_path']):
                         os.remove(old['file_path'])
                 except: pass
-            cur.execute("DELETE FROM submission_attachments WHERE submission_id=%s",(sub_id,))
+            cur.execute("DELETE FROM submission_attachments WHERE submission_id=?",(sub_id,))
     else:
-        cur.execute("INSERT INTO homework_submissions (homework_id,student_id,student_name,content,submitted_at) VALUES (%s,%s,%s,%s,NOW())",(hid,request.teacher_id,stu_name,content))
+        cur.execute("INSERT INTO homework_submissions (homework_id,student_id,student_name,content,submitted_at) VALUES (?,?,?,?,datetime('now'))",(hid,request.teacher_id,stu_name,content))
         sub_id=cur.lastrowid
     if 'multipart' in ct:
         # 兼容前端 'file'（单数）和 'files'（复数）两种字段名
@@ -1758,16 +1723,16 @@ def stu_submit_homework(hid):
             if f.filename:
                 fn=f.filename; sn=f"{uuid.uuid4().hex}{os.path.splitext(fn)[1]}"
                 fp=os.path.join(UPLOAD_DIR,'submissions',sn); f.save(fp)
-                cur.execute("INSERT INTO submission_attachments (submission_id,file_name,file_path,file_size) VALUES (%s,%s,%s,%s)",(sub_id,fn,fp,os.path.getsize(fp)))
+                cur.execute("INSERT INTO submission_attachments (submission_id,file_name,file_path,file_size) VALUES (?,?,?,?)",(sub_id,fn,fp,os.path.getsize(fp)))
     # 提交成功后检查是否需要自动评分
-    cur.execute("SELECT h.has_grading_script,h.auto_grade_enabled,h.total_score,gs.script_path FROM homework h LEFT JOIN homework_grading_scripts gs ON gs.homework_id=h.id WHERE h.id=%s",(hid,))
+    cur.execute("SELECT h.has_grading_script,h.auto_grade_enabled,h.total_score,gs.script_path FROM homework h LEFT JOIN homework_grading_scripts gs ON gs.homework_id=h.id WHERE h.id=?",(hid,))
     hw=cur.fetchone()
     if hw and hw['has_grading_script'] and hw['auto_grade_enabled'] and hw['script_path']:
-        cur.execute("SELECT file_path,file_name FROM submission_attachments WHERE submission_id=%s",(sub_id,))
+        cur.execute("SELECT file_path,file_name FROM submission_attachments WHERE submission_id=?",(sub_id,))
         rows=cur.fetchall()
         if rows:
             files=[{'path':r['file_path'],'name':r['file_name'] or os.path.basename(r['file_path'])} for r in rows]
-            cur.execute("UPDATE homework_submissions SET grading_status='pending' WHERE id=%s",(sub_id,))
+            cur.execute("UPDATE homework_submissions SET grading_status='pending' WHERE id=?",(sub_id,))
             t=threading.Thread(target=_run_grading,args=(hw['script_path'],files,hid,sub_id,hw['total_score'] or 100),daemon=True); t.start()
     db.close(); return success({'message':'提交成功'})
 
@@ -1784,7 +1749,7 @@ def stu_hw_ranking():
     cur = db.cursor()
 
     # 获取学生班级
-    cur.execute("SELECT class_id FROM students WHERE id=%s", (request.teacher_id,))
+    cur.execute("SELECT class_id FROM students WHERE id=?", (request.teacher_id,))
     row = cur.fetchone()
     if not row:
         db.close()
@@ -1792,7 +1757,7 @@ def stu_hw_ranking():
     clid = str(row['class_id'])
 
     # 获取班级总人数
-    cur.execute("SELECT COUNT(*) as cnt FROM students WHERE class_id=%s", (clid,))
+    cur.execute("SELECT COUNT(*) as cnt FROM students WHERE class_id=?", (clid,))
     total = cur.fetchone()['cnt']
 
     # 按课程统计该班学生的作业分数
@@ -1883,7 +1848,7 @@ def admin_dashboard():
     # 考勤状态分布
     cur.execute("SELECT status, COUNT(*) cnt FROM attendance_student_records GROUP BY status")
     att_rows = cur.fetchall()
-    status_map = {'signed':'已签到','absent':'缺勤','late':'迟到','leave':'请假','leave_sick':'病假','leave_personal':'事假','early_leave':'早退'}
+    status_map = {'signed':'已签到','absent':'缺勤','late':'迟到','leave_sick':'病假','leave_personal':'事假','early_leave':'早退'}
     att_dist = [{'name': status_map.get(r['status'], r['status']), 'value': r['cnt']} for r in att_rows]
     # 各课程作业数
     cur.execute("""
@@ -1909,7 +1874,7 @@ def admin_student_activity():
     cur.execute("""
         SELECT login_date, COUNT(*) AS count
         FROM student_login_logs
-        WHERE login_date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
+        WHERE login_date >= DATE_SUB(date('now'), INTERVAL 6 DAY)
         GROUP BY login_date
         ORDER BY login_date ASC
     """)
@@ -1935,7 +1900,7 @@ def admin_get_courses():
     courses = []
     for r in cur.fetchall():
         cur2 = db.cursor()
-        cur2.execute("SELECT cl.id, cl.name FROM course_classes cc JOIN classes cl ON cl.id=cc.class_id WHERE cc.course_id=%s ORDER BY cl.name", (r['id'],))
+        cur2.execute("SELECT cl.id, cl.name FROM course_classes cc JOIN classes cl ON cl.id=cc.class_id WHERE cc.course_id=? ORDER BY cl.name", (r['id'],))
         classes = [{'id': cr['id'], 'name': cr['name']} for cr in cur2.fetchall()]
         courses.append({**r, 'classes': classes})
     db.close()
@@ -1954,13 +1919,13 @@ def admin_create_course():
     # 生成 ID（支持手动指定）
     course_id = d.get('id', '').strip() or f'crs_{int(__import__("time").time()*1000)}'
     db = get_db(); cur = db.cursor()
-    cur.execute("SELECT id FROM courses WHERE id=%s", (course_id,))
+    cur.execute("SELECT id FROM courses WHERE id=?", (course_id,))
     if cur.fetchone(): db.close(); return err('课程ID已存在')
-    cur.execute("INSERT INTO courses (id, name, term, teacher_id, created_at) VALUES (%s,%s,%s,%s,NOW())",
+    cur.execute("INSERT INTO courses (id, name, term, teacher_id, created_at) VALUES (?,?,?,?,datetime('now'))",
                 (course_id, name, term, teacher_id))
     # 批量关联班级
     for cid in class_ids:
-        cur.execute("INSERT INTO course_classes (course_id, class_id, created_at) VALUES (%s,%s,NOW())",
+        cur.execute("INSERT INTO course_classes (course_id, class_id, created_at) VALUES (?,?,datetime('now'))",
                     (course_id, cid))
     db.commit(); db.close()
     return success({'id': course_id, 'message': f'课程创建成功，已关联 {len(class_ids)} 个班级'})
@@ -1975,12 +1940,12 @@ def admin_update_course(course_id):
     class_ids = d.get('class_ids', [])
     if not name: return err('课程名称不能为空')
     db = get_db(); cur = db.cursor()
-    cur.execute("UPDATE courses SET name=%s, term=%s, teacher_id=%s WHERE id=%s",
+    cur.execute("UPDATE courses SET name=?, term=?, teacher_id=? WHERE id=?",
                 (name, term, teacher_id, course_id))
     # 重建班级关联
-    cur.execute("DELETE FROM course_classes WHERE course_id=%s", (course_id,))
+    cur.execute("DELETE FROM course_classes WHERE course_id=?", (course_id,))
     for cid in class_ids:
-        cur.execute("INSERT INTO course_classes (course_id, class_id, created_at) VALUES (%s,%s,NOW())",
+        cur.execute("INSERT INTO course_classes (course_id, class_id, created_at) VALUES (?,?,datetime('now'))",
                     (course_id, cid))
     db.commit(); db.close()
     return success({'message': f'课程更新成功，已关联 {len(class_ids)} 个班级'})
@@ -1989,8 +1954,8 @@ def admin_update_course(course_id):
 @admin_required
 def admin_delete_course(course_id):
     db = get_db(); cur = db.cursor()
-    cur.execute("DELETE FROM course_classes WHERE course_id=%s", (course_id,))
-    cur.execute("DELETE FROM courses WHERE id=%s", (course_id,))
+    cur.execute("DELETE FROM course_classes WHERE course_id=?", (course_id,))
+    cur.execute("DELETE FROM courses WHERE id=?", (course_id,))
     db.commit(); db.close()
     return success()
 
@@ -2009,14 +1974,14 @@ def admin_batch_create_courses():
     db = get_db(); cur = db.cursor()
     created = 0
     for cid in class_ids:
-        cur.execute("SELECT name FROM classes WHERE id=%s", (cid,))
+        cur.execute("SELECT name FROM classes WHERE id=?", (cid,))
         cls = cur.fetchone()
         course_id = f'crs_{int(__import__("time").time()*1000)}_{created}'
         course_name = f"{base_name}-{cls['name']}" if len(class_ids) > 1 else base_name
         try:
-            cur.execute("INSERT INTO courses (id, name, term, teacher_id, created_at) VALUES (%s,%s,%s,%s,NOW())",
+            cur.execute("INSERT INTO courses (id, name, term, teacher_id, created_at) VALUES (?,?,?,?,datetime('now'))",
                         (course_id, course_name, term, teacher_id))
-            cur.execute("INSERT INTO course_classes (course_id, class_id, created_at) VALUES (%s,%s,NOW())",
+            cur.execute("INSERT INTO course_classes (course_id, class_id, created_at) VALUES (?,?,datetime('now'))",
                         (course_id, cid))
             created += 1
         except: pass
@@ -2149,7 +2114,7 @@ def admin_attendance_stats():
             " WHERE " + wclause +
             " GROUP BY rec.status")
     cur.execute(sql2, params)
-    status_map = {'signed':'已签到','absent':'缺勤','late':'迟到','leave':'请假'}
+    status_map = {'signed':'已签到','absent':'缺勤','late':'迟到','leave_sick':'病假','leave_personal':'事假','early_leave':'早退'}
     dist = [{'name':status_map.get(r['status'],r['status']),'value':r['cnt']} for r in cur.fetchall()]
     # 班级签到率
     sql3 = ("SELECT ar.class_name,"
@@ -2202,7 +2167,7 @@ def admin_create_teacher():
     token=secrets.token_urlsafe(16)
     db=get_db(); cur=db.cursor()
     try:
-        cur.execute("INSERT INTO teachers (username,password_hash,real_name,teacher_token) VALUES (%s,%s,%s,%s)",(username,pw_hash,real_name,token))
+        cur.execute("INSERT INTO teachers (username,password_hash,real_name,teacher_token) VALUES (?,?,?,?)",(username,pw_hash,real_name,token))
         db.close(); return success({'id':cur.lastrowid})
     except Exception as e:
         db.close(); return err(f'创建失败: {e}')
@@ -2216,9 +2181,9 @@ def admin_update_teacher(tid):
     db=get_db(); cur=db.cursor()
     if password:
         pw=bcrypt.hashpw(password.encode(),bcrypt.gensalt()).decode()
-        cur.execute("UPDATE teachers SET username=%s,real_name=%s,password_hash=%s WHERE id=%s",(username,real_name,pw,tid))
+        cur.execute("UPDATE teachers SET username=?,real_name=?,password_hash=? WHERE id=?",(username,real_name,pw,tid))
     else:
-        cur.execute("UPDATE teachers SET username=%s,real_name=%s WHERE id=%s",(username,real_name,tid))
+        cur.execute("UPDATE teachers SET username=?,real_name=? WHERE id=?",(username,real_name,tid))
     db.close(); return success()
 
 @app.route('/api/admin/teachers/<int:tid>', methods=['DELETE'])
@@ -2226,7 +2191,7 @@ def admin_update_teacher(tid):
 def admin_delete_teacher(tid):
     if tid==1: return err('不能删除超级管理员')
     db=get_db(); cur=db.cursor()
-    cur.execute("DELETE FROM teachers WHERE id=%s",(tid,))
+    cur.execute("DELETE FROM teachers WHERE id=?",(tid,))
     db.close(); return success()
 
 @app.route('/api/admin/teachers/<int:tid>/reset_token', methods=['POST'])
@@ -2234,7 +2199,7 @@ def admin_delete_teacher(tid):
 def admin_reset_teacher_token(tid):
     token=secrets.token_urlsafe(16)
     db=get_db(); cur=db.cursor()
-    cur.execute("UPDATE teachers SET teacher_token=%s WHERE id=%s",(token,tid))
+    cur.execute("UPDATE teachers SET teacher_token=? WHERE id=?",(token,tid))
     db.close(); return success({'token':token})
 
 @app.route('/api/admin/teachers/<int:tid>/reset_password', methods=['POST'])
@@ -2244,7 +2209,7 @@ def admin_reset_teacher_password(tid):
     new_p=d.get('new_password','123456')
     pw=bcrypt.hashpw(new_p.encode(),bcrypt.gensalt()).decode()
     db=get_db(); cur=db.cursor()
-    cur.execute("UPDATE teachers SET password_hash=%s WHERE id=%s",(pw,tid))
+    cur.execute("UPDATE teachers SET password_hash=? WHERE id=?",(pw,tid))
     db.close(); return success({'message':f'密码已重置为: {new_p}'})
 
 @app.route('/api/admin/classes', methods=['GET'])
@@ -2259,7 +2224,7 @@ def admin_get_classes():
     classes_data = []
     for row in rows:
         cls = _row(row)
-        cur.execute("SELECT COUNT(*) as cnt FROM students WHERE class_id=%s", (cls['id'],))
+        cur.execute("SELECT COUNT(*) as cnt FROM students WHERE class_id=?", (cls['id'],))
         cls['student_count'] = cur.fetchone()['cnt']
         cur.execute("""
             SELECT s.id, s.name, s.student_number, s.sort_order,
@@ -2285,7 +2250,7 @@ def admin_create_class():
     if not name: return err('班级名称不能为空')
     cid=str(uuid.uuid4())[:8].upper()
     db=get_db(); cur=db.cursor()
-    cur.execute("INSERT INTO classes (id,name,description) VALUES (%s,%s,%s)",(cid,name,desc))
+    cur.execute("INSERT INTO classes (id,name,description) VALUES (?,?,?)",(cid,name,desc))
     db.close(); return success({'id':cid})
 
 @app.route('/api/admin/classes/<class_id>', methods=['PUT'])
@@ -2294,23 +2259,23 @@ def admin_update_class(class_id):
     d=request.get_json() or {}
     name=(d.get('name') or '').strip(); desc=d.get('description','')
     db=get_db(); cur=db.cursor()
-    cur.execute("UPDATE classes SET name=%s,description=%s WHERE id=%s",(name,desc,class_id))
+    cur.execute("UPDATE classes SET name=?,description=? WHERE id=?",(name,desc,class_id))
     db.close(); return success()
 
 @app.route('/api/admin/classes/<class_id>', methods=['DELETE'])
 @admin_required
 def admin_delete_class(class_id):
     db=get_db(); cur=db.cursor()
-    cur.execute("DELETE FROM students WHERE class_id=%s",(class_id,))
-    cur.execute("DELETE FROM course_classes WHERE class_id=%s",(class_id,))
-    cur.execute("DELETE FROM classes WHERE id=%s",(class_id,))
+    cur.execute("DELETE FROM students WHERE class_id=?",(class_id,))
+    cur.execute("DELETE FROM course_classes WHERE class_id=?",(class_id,))
+    cur.execute("DELETE FROM classes WHERE id=?",(class_id,))
     db.close(); return success()
 
 @app.route('/api/admin/classes/<class_id>/students', methods=['GET'])
 @admin_required
 def admin_get_class_students(class_id):
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT s.*,sa.username as account_username,sa.id as account_id FROM students s LEFT JOIN student_accounts sa ON sa.student_id=s.id WHERE s.class_id=%s ORDER BY s.sort_order,s.name",(class_id,))
+    cur.execute("SELECT s.*,sa.username as account_username,sa.id as account_id FROM students s LEFT JOIN student_accounts sa ON sa.student_id=s.id WHERE s.class_id=? ORDER BY s.sort_order,s.name",(class_id,))
     rows=cur.fetchall(); db.close(); return success(_rows(rows))
 
 @app.route('/api/admin/classes/<class_id>/students', methods=['POST'])
@@ -2326,7 +2291,7 @@ def admin_add_class_student(class_id):
             return err('姓名不能为空')
         db = get_db()
         cur = db.cursor()
-        cur.execute("SELECT MAX(sort_order) as max_so FROM students WHERE class_id=%s", (class_id,))
+        cur.execute("SELECT MAX(sort_order) as max_so FROM students WHERE class_id=?", (class_id,))
         max_so = (cur.fetchone() or {}).get('max_so') or 0
         cur.execute(
             "INSERT INTO students (name,student_number,class_id,sort_order) VALUES (%s,%s,%s,%s)",
@@ -2339,7 +2304,7 @@ def admin_add_class_student(class_id):
     # 批量添加
     db = get_db()
     cur = db.cursor()
-    cur.execute("SELECT MAX(sort_order) as max_so FROM students WHERE class_id=%s", (class_id,))
+    cur.execute("SELECT MAX(sort_order) as max_so FROM students WHERE class_id=?", (class_id,))
     max_so = (cur.fetchone() or {}).get('max_so') or 0
 
     added = []
@@ -2352,7 +2317,7 @@ def admin_add_class_student(class_id):
             continue
         # 检查学号是否重复（如果提供了学号）
         if student_number:
-            cur.execute("SELECT id FROM students WHERE student_number=%s", (student_number,))
+            cur.execute("SELECT id FROM students WHERE student_number=?", (student_number,))
             if cur.fetchone():
                 skipped.append({'index': i + 1, 'name': name, 'student_number': student_number, 'reason': '学号已存在'})
                 continue
@@ -2370,8 +2335,8 @@ def admin_add_class_student(class_id):
 @admin_required
 def admin_delete_student(sid):
     db=get_db(); cur=db.cursor()
-    cur.execute("DELETE FROM student_accounts WHERE student_id=%s",(sid,))
-    cur.execute("DELETE FROM students WHERE id=%s",(sid,))
+    cur.execute("DELETE FROM student_accounts WHERE student_id=?",(sid,))
+    cur.execute("DELETE FROM students WHERE id=?",(sid,))
     db.close(); return success()
 
 @app.route('/api/admin/students/create_accounts', methods=['POST'])
@@ -2380,14 +2345,14 @@ def admin_create_student_accounts():
     d=request.get_json() or {}; clid=str(d.get('class_id','')); def_pw=d.get('default_password','123456')
     if not clid: return err('class_id 不能为空')
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT id,name,student_number FROM students WHERE class_id=%s AND id NOT IN (SELECT student_id FROM student_accounts)",(clid,))
+    cur.execute("SELECT id,name,student_number FROM students WHERE class_id=? AND id NOT IN (SELECT student_id FROM student_accounts)",(clid,))
     students=cur.fetchall()
     created=0; skipped=0
     for s in students:
         un=s.get('student_number') or f"stu_{s['id']}"
         pw_hash=bcrypt.hashpw(def_pw.encode(),bcrypt.gensalt()).decode()
         try:
-            cur.execute("INSERT INTO student_accounts (student_id,username,password) VALUES (%s,%s,%s)",(s['id'],un,pw_hash))
+            cur.execute("INSERT INTO student_accounts (student_id,username,password) VALUES (?,?,?)",(s['id'],un,pw_hash))
             created+=1
         except:
             skipped+=1
@@ -2399,7 +2364,7 @@ def admin_reset_student_password():
     d=request.get_json() or {}; aid=int(d.get('account_id',0)); new_p=d.get('new_password','123456')
     pw=bcrypt.hashpw(new_p.encode(),bcrypt.gensalt()).decode()
     db=get_db(); cur=db.cursor()
-    cur.execute("UPDATE student_accounts SET password=%s WHERE id=%s",(pw,aid))
+    cur.execute("UPDATE student_accounts SET password=? WHERE id=?",(pw,aid))
     db.close(); return success({'message':f'密码已重置为: {new_p}'})
 
 @app.route('/api/admin/students/clear_accounts', methods=['POST'])
@@ -2415,13 +2380,13 @@ def admin_clear_student_accounts():
     for sid in student_ids:
         try:
             # 1. 删除学生账号记录
-            cur.execute("DELETE FROM student_accounts WHERE student_id=%s",(sid,))
+            cur.execute("DELETE FROM student_accounts WHERE student_id=?",(sid,))
             # 2. 删除作业提交记录
-            cur.execute("DELETE FROM homework_submissions WHERE student_id=%s",(sid,))
+            cur.execute("DELETE FROM homework_submissions WHERE student_id=?",(sid,))
             # 3. 删除考勤学生记录
-            cur.execute("DELETE FROM attendance_student_records WHERE student_id=%s",(sid,))
+            cur.execute("DELETE FROM attendance_student_records WHERE student_id=?",(sid,))
             # 4. 删除学生通知
-            cur.execute("DELETE FROM student_notifications WHERE student_id=%s",(sid,))
+            cur.execute("DELETE FROM student_notifications WHERE student_id=?",(sid,))
             cleared+=1
         except Exception as e:
             errors.append({'sid':sid,'error':str(e)})
@@ -2458,9 +2423,9 @@ def forum_get_posts():
     sql+=" ORDER BY fp.created_at DESC LIMIT %s OFFSET %s"; params.extend([ps,offset])
     cur.execute(sql,params); posts=_rows(cur.fetchall())
     for p in posts:
-        cur.execute("SELECT COUNT(*) as cnt FROM forum_comments WHERE post_id=%s",(p['id'],))
+        cur.execute("SELECT COUNT(*) as cnt FROM forum_comments WHERE post_id=?",(p['id'],))
         p['comment_count']=cur.fetchone()['cnt']
-    cur.execute("SELECT COUNT(*) as total FROM forum_posts" + (" WHERE course_id=%s" if cid else ""),([cid] if cid else []))
+    cur.execute("SELECT COUNT(*) as total FROM forum_posts" + (" WHERE course_id=?" if cid else ""),([cid] if cid else []))
     total=cur.fetchone()['total']
     db.close(); return success({'posts':posts,'total':total,'page':page,'page_size':ps})
 
@@ -2487,19 +2452,19 @@ def forum_create_post():
         images = d.get('images', [])
     if not content or not cid: return err('内容和课程不能为空')
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT name as course_name FROM courses WHERE id=%s",(cid,))
+    cur.execute("SELECT name as course_name FROM courses WHERE id=?",(cid,))
     crs=cur.fetchone()
     if not crs: db.close(); return err('课程不存在',404)
     role=request.forum_role
     if role=='teacher':
-        cur.execute("SELECT real_name FROM teachers WHERE id=%s",(request.forum_uid,))
+        cur.execute("SELECT real_name FROM teachers WHERE id=?",(request.forum_uid,))
         uname=(cur.fetchone() or {}).get('real_name','某老师')
     elif role=='student':
-        cur.execute("SELECT name FROM students WHERE id=%s",(request.forum_uid,))
+        cur.execute("SELECT name FROM students WHERE id=?",(request.forum_uid,))
         nm=(cur.fetchone() or {}).get('name','某同学')
         uname=anon_nick if (is_anonymous and anon_nick) else nm
     else: uname='管理员'
-    cur.execute("INSERT INTO forum_posts (title,content,course_id,course_name,author_id,author_name,author_type,is_anonymous,images,anonymous_nickname) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(title,content,cid,crs['course_name'],request.forum_uid,uname,role,1 if is_anonymous else 0,json.dumps(images),anon_nick))
+    cur.execute("INSERT INTO forum_posts (title,content,course_id,course_name,author_id,author_name,author_type,is_anonymous,images,anonymous_nickname) VALUES (?,?,?,?,?,?,?,?,?,?)",(title,content,cid,crs['course_name'],request.forum_uid,uname,role,1 if is_anonymous else 0,json.dumps(images),anon_nick))
     pid=cur.lastrowid; db.close()
     return success({'id':pid})
 
@@ -2507,11 +2472,11 @@ def forum_create_post():
 @forum_required
 def forum_get_post(pid):
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT fp.*,t.real_name as author_real_name FROM forum_posts fp LEFT JOIN teachers t ON t.id=fp.author_id WHERE fp.id=%s",(pid,))
+    cur.execute("SELECT fp.*,t.real_name as author_real_name FROM forum_posts fp LEFT JOIN teachers t ON t.id=fp.author_id WHERE fp.id=?",(pid,))
     post=cur.fetchone()
     if not post: db.close(); return err('帖子不存在',404)
     post=_row(post)
-    cur.execute("SELECT fc.* FROM forum_comments fc WHERE fc.post_id=%s ORDER BY fc.created_at",(pid,))
+    cur.execute("SELECT fc.* FROM forum_comments fc WHERE fc.post_id=? ORDER BY fc.created_at",(pid,))
     post['comments']=_rows(cur.fetchall())
     db.close(); return success(post)
 
@@ -2519,13 +2484,13 @@ def forum_get_post(pid):
 @forum_required
 def forum_delete_post(pid):
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT * FROM forum_posts WHERE id=%s",(pid,))
+    cur.execute("SELECT * FROM forum_posts WHERE id=?",(pid,))
     post=cur.fetchone()
     if not post: db.close(); return err('帖子不存在',404)
     role=request.forum_role
     if role!='admin' and post['author_id']!=request.forum_uid: db.close(); return err('无权限删除',403)
-    cur.execute("DELETE FROM forum_comments WHERE post_id=%s",(pid,))
-    cur.execute("DELETE FROM forum_posts WHERE id=%s",(pid,))
+    cur.execute("DELETE FROM forum_comments WHERE post_id=?",(pid,))
+    cur.execute("DELETE FROM forum_posts WHERE id=?",(pid,))
     db.close(); return success()
 
 @app.route('/api/forum/posts/<int:pid>/comments', methods=['POST'])
@@ -2537,14 +2502,14 @@ def forum_create_comment(pid):
     db=get_db(); cur=db.cursor()
     role=request.forum_role
     if role=='teacher':
-        cur.execute("SELECT real_name FROM teachers WHERE id=%s",(request.forum_uid,))
+        cur.execute("SELECT real_name FROM teachers WHERE id=?",(request.forum_uid,))
         uname=(cur.fetchone() or {}).get('real_name','某老师')
     elif role=='student':
-        cur.execute("SELECT name FROM students WHERE id=%s",(request.forum_uid,))
+        cur.execute("SELECT name FROM students WHERE id=?",(request.forum_uid,))
         nm=(cur.fetchone() or {}).get('name','某同学')
         uname=anon_nick if (is_anonymous and anon_nick) else nm
     else: uname='管理员'
-    cur.execute("INSERT INTO forum_comments (post_id,author_id,author_name,author_type,content,is_anonymous) VALUES (%s,%s,%s,%s,%s,%s)",(pid,request.forum_uid,uname,role,content,1 if is_anonymous else 0))
+    cur.execute("INSERT INTO forum_comments (post_id,author_id,author_name,author_type,content,is_anonymous) VALUES (?,?,?,?,?,?)",(pid,request.forum_uid,uname,role,content,1 if is_anonymous else 0))
     cid=cur.lastrowid; db.close()
     return success({'id':cid})
 
@@ -2552,12 +2517,12 @@ def forum_create_comment(pid):
 @forum_required
 def forum_delete_comment(cid):
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT * FROM forum_comments WHERE id=%s",(cid,))
+    cur.execute("SELECT * FROM forum_comments WHERE id=?",(cid,))
     cmt=cur.fetchone()
     if not cmt: db.close(); return err('评论不存在',404)
     role=request.forum_role
     if role!='admin' and cmt['author_id']!=request.forum_uid: db.close(); return err('无权限删除',403)
-    cur.execute("DELETE FROM forum_comments WHERE id=%s",(cid,))
+    cur.execute("DELETE FROM forum_comments WHERE id=?",(cid,))
     db.close(); return success()
 
 @app.route('/api/forum/upload', methods=['POST'])
@@ -2597,7 +2562,7 @@ def get_herbs():
     page=int(request.args.get('page',1))
     page_size=int(request.args.get('page_size',50))
     offset=(page-1)*page_size
-    cur.execute("SELECT * FROM herbs ORDER BY category,name LIMIT %s OFFSET %s",(page_size,offset))
+    cur.execute("SELECT * FROM herbs ORDER BY category,name LIMIT ? OFFSET ?",(page_size,offset))
     herbs=_rows(cur.fetchall())
     cur.execute("SELECT COUNT(*) FROM herbs")
     total=cur.fetchone()['COUNT(*)']
@@ -2974,8 +2939,7 @@ def att_init_sign():
     sk = active_session[0]
     if device_fp:
         existing = _db_device_check(device_fp, sk)
-        if existing:
-            # 设备锁存在，且精确匹配当前 session_key → 重复扫码
+        if existing and existing['session_key'] == sk:
             return fail('该设备已签到，请勿重复扫码')
 
     # ── 4. 保留 scan_token（不删除，多个学生可共用10秒有效期的二维码）
@@ -3007,7 +2971,7 @@ def att_submit():
 
     # ── 2. 查花名册 ──
     db = get_db(); cur = db.cursor()
-    cur.execute("SELECT name FROM students WHERE class_id=%s", (clid,))
+    cur.execute("SELECT name FROM students WHERE class_id=?", (clid,))
     roster = [r['name'] for r in cur.fetchall()]
     if roster and name not in roster:
         db.close()
@@ -3027,7 +2991,7 @@ def att_submit():
     cur.execute(
         "INSERT INTO attendance_records (session_key,course_id,class_id,student_name,sign_time)"
         " VALUES (%s,%s,%s,%s,%s)"
-        " ON DUPLICATE KEY UPDATE sign_time=VALUES(sign_time)",
+        "",
         (sign_key, cid, clid, name, datetime.now())
     )
     db.close()
@@ -3046,19 +3010,11 @@ def att_submit():
 
 if __name__ == '__main__':
     _init_token_tables()
-    _ensure_indexes()
-    logger.info("[启动] 考勤 token 表初始化完成，关键索引检查完成，开始监听...")
+    logger.info("[启动] 考勤 token 表初始化完成，开始监听...")
     print("Starting SmartClass Backend on http://0.0.0.0:5000")
+    # Windows 推荐 waitress 多线程（gunicorn 只支持 Linux）
+    # waitress 支持 --threads 并发，多 worker 共享数据库 MEMORY 表
     from waitress import serve
     logger.info("[启动] 使用 waitress 多线程模式（--threads=8）")
     print("Using waitress multi-threaded server (8 threads)")
     serve(app, host='0.0.0.0', port=5000, threads=8)
-
-# gunicorn 启动时自动初始化（单 worker 模式推荐）
-@app.before_request
-def _startup_check():
-    if not hasattr(app, '_indexes_ok'):
-        _init_token_tables()
-        _ensure_indexes()
-        app._indexes_ok = True
-        logger.info("[启动] 索引初始化完成")
