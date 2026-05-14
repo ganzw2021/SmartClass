@@ -31,7 +31,10 @@ logger = logging.getLogger('smartclass')
 
 DB_CONFIG = {
     'host':'127.0.0.1','port':3306,'user':'root','password':'Root@123456',
-    'database':'smartclass','charset':'utf8mb4','autocommit':True
+    'database':'smartclass','charset':'utf8mb4','autocommit':True,
+    'connect_timeout': 10,       # 连接超时 10 秒
+    'read_timeout': 30,          # 读超时 30 秒
+    'write_timeout': 30,         # 写超时 30 秒
 }
 
 # 让所有 cursor 默认返回 dict 而非 tuple
@@ -51,12 +54,13 @@ app = Flask(__name__)
 CORS(app, resources={r"/api/*":{"origins":"*"}})
 app.config['MAX_CONTENT_LENGTH'] = 100*1024*1024
 
-# 连接池：最多8个活跃连接，复用已关闭的连接
+# 连接池：支持 3000 并发，优化连接复用
 _db_pool = PooledDB(
     creator=pymysql,
-    maxconnections=8,
-    mincached=2,
-    maxcached=5,
+    maxconnections=32,   # 8→32，最多32个活跃连接
+    mincached=4,          # 2→4，初始预建4个连接
+    maxcached=16,         # 5→16，缓存最多16个连接
+    maxshared=8,          # 新增：最多8个共享连接（适用于多线程）
     blocking=True,
     **DB_CONFIG
 )
@@ -417,6 +421,38 @@ def _init_token_tables():
         """)
         db.commit()
         logger.info("[考勤] att_tokens / att_device_sessions 初始化完成")
+    finally:
+        cur.close(); db.close()
+
+def _ensure_indexes():
+    """确保关键索引存在（3000并发优化）"""
+    db = get_db(); cur = db.cursor()
+    indexes = [
+        # 考勤表索引
+        ("idx_att_session_sign", "attendance_records", "session_key, sign_time"),
+        ("idx_att_course_class", "attendance_records", "course_id, class_id"),
+        # 作业提交表索引
+        ("idx_sub_hw_student", "homework_submissions", "homework_id, student_id"),
+        ("idx_sub_student", "homework_submissions", "student_id"),
+        # 学生表索引
+        ("idx_student_class", "students", "class_id"),
+        # 考勤报表索引
+        ("idx_report_teacher", "attendance_reports", "teacher_id, ended_at"),
+        # 考勤学生明细索引
+        ("idx_stu_rec_report", "attendance_student_records", "report_id"),
+        # 考勤会话索引
+        ("idx_att_tokens_expire", "att_tokens", "expire_at"),
+        ("idx_att_tokens_session", "att_tokens", "session_key"),
+    ]
+    for idx_name, tbl, cols in indexes:
+        try:
+            cur.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {tbl} ({cols})")
+            logger.debug(f"[索引] {idx_name} ON {tbl}({cols}) ✓")
+        except Exception as e:
+            logger.debug(f"[索引] {idx_name} 跳过: {e}")
+    try:
+        db.commit()
+        logger.info("[索引] 关键索引检查完成")
     finally:
         cur.close(); db.close()
 
@@ -2995,11 +3031,19 @@ def att_submit():
 
 if __name__ == '__main__':
     _init_token_tables()
-    logger.info("[启动] 考勤 token 表初始化完成，开始监听...")
+    _ensure_indexes()
+    logger.info("[启动] 考勤 token 表初始化完成，关键索引检查完成，开始监听...")
     print("Starting SmartClass Backend on http://0.0.0.0:5000")
-    # Windows 推荐 waitress 多线程（gunicorn 只支持 Linux）
-    # waitress 支持 --threads 并发，多 worker 共享数据库 MEMORY 表
     from waitress import serve
     logger.info("[启动] 使用 waitress 多线程模式（--threads=8）")
     print("Using waitress multi-threaded server (8 threads)")
     serve(app, host='0.0.0.0', port=5000, threads=8)
+
+# gunicorn 启动时自动初始化（单 worker 模式推荐）
+@app.before_request
+def _startup_check():
+    if not hasattr(app, '_indexes_ok'):
+        _init_token_tables()
+        _ensure_indexes()
+        app._indexes_ok = True
+        logger.info("[启动] 索引初始化完成")

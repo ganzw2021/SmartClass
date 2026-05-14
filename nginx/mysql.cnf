@@ -1,0 +1,44 @@
+# SmartClass MySQL 优化配置
+# 文件路径: /etc/mysql/conf.d/smartclass.cnf
+# 生效后执行: sudo systemctl restart mysql
+
+[mysqld]
+# ========== 连接优化 ==========
+max_connections = 512              # 最大连接数（原默认151，建议256-512）
+wait_timeout = 60                  # 空闲连接超时（秒）
+interactive_timeout = 60           # 交互式连接超时
+max_connect_errors = 999999        # 允许的最大连接错误次数
+thread_cache_size = 64             # 线程缓存大小
+
+# ========== 缓冲区优化 ==========
+innodb_buffer_pool_size = 2G       # 缓冲池大小（建议设为服务器内存的50-70%）
+innodb_log_file_size = 512M        # 重做日志大小
+innodb_log_buffer_size = 64M       # 日志缓冲区
+sort_buffer_size = 4M              # 排序缓冲区
+read_buffer_size = 4M             # 读缓冲区
+read_rnd_buffer_size = 8M         # 随机读缓冲区
+join_buffer_size = 4M             # JOIN 缓冲区
+
+# ========== 查询优化 ==========
+query_cache_type = 0               # 禁用查询缓存（MySQL 8.0已移除，此参数仅适用于MySQL 5.7）
+query_cache_size = 0
+tmp_table_size = 64M               # 临时表大小
+max_heap_table_size = 64M         # 内存表大小
+
+# ========== 性能相关 ==========
+innodb_flush_log_at_trx_commit = 2 # 折中模式（性能vs安全）
+innodb_flush_method = O_DIRECT     # Linux 下使用 O_DIRECT
+innodb_file_per_table = 1          # 每个表单独一个表空间文件
+innodb_stats_on_metadata = 0       # 禁用元数据统计更新
+
+# ========== 日志优化 ==========
+slow_query_log = 1
+slow_query_log_file = /var/log/mysql/slow.log
+long_query_time = 2               # 超过2秒的查询记录到慢日志
+
+# ========== 字符集 ==========
+character-set-server = utf8mb4
+collation-server = utf8mb4_unicode_ci
+
+# ========== 网络优化 ==========
+skip-name-resolve                   # 跳过DNS解析，加速连接
