@@ -784,13 +784,20 @@ def att_save_report():
         class_row=cur2.fetchone(); class_name=class_row['name'] if class_row else ''
         logger.debug("course_name=%s, class_name=%s", course_name, class_name)
 
-        from datetime import datetime
+        from datetime import datetime, timezone, timedelta
         def _parse_ts(v):
             if not v: return None
-            # 支持 ISO 8601 (2026-04-16T06:02:01.591Z) 和 MySQL 格式
-            v = str(v).replace('Z', '+00:00').replace('T', ' ')
-            try: return datetime.fromisoformat(v.replace('+00:00','')).strftime('%Y-%m-%d %H:%M:%S')
-            except: return v[:19] if len(v)>=19 else v
+            v = str(v)
+            # 处理 ISO 8601 UTC 格式 (带 Z 后缀)
+            if v.endswith('Z'):
+                dt_utc = datetime.fromisoformat(v.replace('Z', '+00:00'))
+                # 转换为服务器本地时区
+                local_tz = datetime.now().astimezone().tzinfo
+                dt_local = dt_utc.astimezone(local_tz)
+                return dt_local.strftime('%Y-%m-%d %H:%M:%S')
+            # 处理已经是本地时间的格式：将 T 替换为空格后返回
+            v = v.replace('T', ' ')
+            return v[:19] if len(v) >= 19 else v
         started_at = _parse_ts(d.get('started_at',''))
         ended_at   = _parse_ts(d.get('ended_at',''))
 
