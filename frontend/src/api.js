@@ -629,6 +629,21 @@ export async function deleteGradingScript(homeworkId) {
   return await api.delete(`/homework/${homeworkId}/grading_script`)
 }
 
+/**
+ * 导出作业批改报告（ZIP，每个学生一个HTML）
+ * @param {number} homeworkId - 作业ID
+ */
+export function exportHomeworkReports(homeworkId) {
+  const token = sessionStorage.getItem('tc_token')
+  const url = `${api.defaults.baseURL}/homework/${homeworkId}/export?token=${token}`
+  const a = document.createElement('a')
+  a.href = url
+  a.target = '_blank'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+}
+
 // ============ 课程资源 ============
 
 /**

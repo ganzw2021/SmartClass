@@ -299,11 +299,21 @@
           </div>
 
           <!-- 提交统计 -->
-
-          <!-- 提交统计 -->
           <div class="flex items-center justify-between mb-4">
             <h4 class="font-bold text-slate-800">学生提交情况</h4>
-            <span class="text-sm text-slate-500">已提交 {{ submissions?.length || 0 }} / {{ totalStudents }} 人</span>
+            <div class="flex items-center gap-3">
+              <button
+                @click="handleExportReports"
+                :disabled="exportingReports"
+                class="px-3 py-1.5 bg-gradient-to-r from-[#2d6a4f] to-[#40916c] hover:from-[#245a42] hover:to-[#357a56] text-white rounded-lg text-sm font-medium transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                {{ exportingReports ? '导出中...' : '导出批改报告' }}
+              </button>
+              <span class="text-sm text-slate-500">已提交 {{ submissions?.length || 0 }} / {{ totalStudents }} 人</span>
+            </div>
           </div>
 
           <!-- 提交列表 -->
@@ -491,7 +501,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { getHomeworkList, getHomeworkDetail, getHomeworkSubmissions, createHomework, updateHomework, deleteHomework as apiDeleteHomework, gradeHomework, uploadGradingScript, getGradingScript, getGradingScriptContent, toggleGradingAuto, deleteGradingScript, downloadGradingScript } from '../api.js'
+import { getHomeworkList, getHomeworkDetail, getHomeworkSubmissions, createHomework, updateHomework, deleteHomework as apiDeleteHomework, gradeHomework, uploadGradingScript, getGradingScript, getGradingScriptContent, toggleGradingAuto, deleteGradingScript, downloadGradingScript, exportHomeworkReports } from '../api.js'
 
 const props = defineProps({
   courses: { type: Array, default: () => [] },
@@ -558,6 +568,9 @@ const scriptUploading = ref(false)
 const showScriptModal = ref(false)
 const scriptContent = ref('')
 const selectedFiles = ref([])
+
+// 导出报告
+const exportingReports = ref(false)
 
 // 创建作业时的脚本上传
 const createScriptFile = ref(null)
@@ -944,7 +957,7 @@ function handleDownloadScript() {
 
 async function confirmDeleteScript() {
   if (!confirm('确定要删除评分脚本吗？')) return
-  
+
   try {
     const res = await deleteGradingScript(currentHomework.value.id)
     if (res.success) {
@@ -957,6 +970,21 @@ async function confirmDeleteScript() {
   } catch (e) {
     console.error('删除评分脚本失败', e)
     alert('删除失败')
+  }
+}
+
+// 导出批改报告
+async function handleExportReports() {
+  if (!currentHomework.value?.id) return
+  exportingReports.value = true
+  try {
+    exportHomeworkReports(currentHomework.value.id)
+  } catch (e) {
+    console.error('导出失败', e)
+    alert('导出失败')
+  } finally {
+    // 1秒后恢复按钮状态（下载是异步的）
+    setTimeout(() => { exportingReports.value = false }, 1000)
   }
 }
 

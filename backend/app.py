@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """智慧课堂后端 Flask API - 重建版 2026-04-14"""
-import os, sys, json, time, uuid, secrets, threading, subprocess, logging
+import os, sys, json, time, uuid, secrets, threading, subprocess, logging, zipfile, io, html
 from datetime import datetime, timedelta
 from functools import wraps
 from decimal import Decimal
 import bcrypt, pymysql, jwt
 from dbutils.pooled_db import PooledDB
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, Response
 from flask_cors import CORS
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1498,6 +1498,417 @@ def dl_grd_att(aid):
     if not os.path.isabs(fp): fp=os.path.join(UPLOAD_DIR,fp.lstrip('/'))
     if not os.path.exists(fp): return err('文件不存在',404)
     return send_file(fp,as_attachment=True,download_name=att['file_name'])
+
+# ======= 导出作业批改报告 =======
+@app.route('/api/homework/<int:hid>/export', methods=['GET'])
+@teacher_required
+def export_homework_reports(hid):
+    """导出作业批改报告，每个学生一个HTML页面，打包为ZIP"""
+    db = get_db(); cur = db.cursor()
+    # 验证作业存在并获取作业信息
+    cur.execute("SELECT h.*, c.name as course_name FROM homework h JOIN courses c ON c.id=h.course_id WHERE h.id=%s", (hid,))
+    hw = cur.fetchone()
+    if not hw: db.close(); return err('作业不存在', 404)
+
+    # 获取所有提交记录
+    cur.execute("""
+        SELECT s.*, st.student_number
+        FROM homework_submissions s
+        LEFT JOIN students st ON st.id=s.student_id
+        WHERE s.homework_id=%s ORDER BY s.submitted_at
+    """, (hid,))
+    subs = _rows(cur.fetchall())
+
+    # 获取作业附件
+    cur.execute("SELECT * FROM homework_attachments WHERE homework_id=%s", (hid,))
+    hw_attachments = _rows(cur.fetchall())
+
+    # 获取提交附件
+    for s in subs:
+        cur.execute("SELECT * FROM submission_attachments WHERE submission_id=%s", (s['id'],))
+        s['attachments'] = _rows(cur.fetchall())
+
+    db.close()
+
+    # 生成ZIP
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for sub in subs:
+            html_content = _build_student_report(hw, sub, hw_attachments)
+            # 文件名：学号_姓名_作业标题.html（去除非法字符）
+            safe_name = _sanitize_filename(f"{sub.get('student_number','') or sub.get('student_id','')}_{sub.get('student_name','学生')}_{hw['title']}")
+            zf.writestr(f"{safe_name}.html", html_content.encode('utf-8'))
+
+    zip_buffer.seek(0)
+    filename = _sanitize_filename(f"{hw['title']}_批改报告_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+    return Response(
+        zip_buffer.getvalue(),
+        mimetype='application/zip',
+        headers={'Content-Disposition': f'attachment; filename="{filename}.zip"'}
+    )
+
+def _sanitize_filename(name):
+    """去除文件名中的非法字符"""
+    import re
+    return re.sub(r'[\\/:*?"<>|]', '_', name).strip()
+
+def _build_student_report(hw, sub, hw_attachments):
+    """为单个学生生成精美的HTML批改报告"""
+    student_name = html.escape(sub.get('student_name', '学生') or '学生')
+    student_number = html.escape(str(sub.get('student_number', '') or sub.get('student_id', '')))
+    score = sub.get('score')
+    auto_score = sub.get('auto_score')
+    final_score = score if score is not None else (auto_score if auto_score is not None else None)
+    feedback = html.escape(sub.get('feedback', '') or '')
+    submitted_at = sub.get('submitted_at', '')
+    if submitted_at:
+        try:
+            dt = datetime.strptime(submitted_at, '%Y-%m-%dT%H:%M:%S')
+            submitted_at = dt.strftime('%Y/%m/%d %H:%M')
+        except:
+            pass
+
+    # 评分详情
+    details = sub.get('auto_grade_details') or {}
+    if isinstance(details, str):
+        try: details = json.loads(details)
+        except: details = {}
+    details_html = ''
+    if details:
+        items = []
+        for k, v in sorted(details.items()):
+            key = html.escape(str(k))
+            val = html.escape(str(v))
+            icon = '✅' if '✅' in val or 'check' in val.lower() else ('❌' if '❌' in val or 'x' in val.lower() else '➖')
+            score_match = __import__('re').search(r'\(([+-]?\d+)分?\)', val)
+            pts = score_match.group(1) if score_match else ''
+            items.append(f'''
+            <div class="detail-item">
+                <div class="detail-icon">{icon}</div>
+                <div class="detail-text">
+                    <div class="detail-title">{key}</div>
+                    <div class="detail-desc">{val}</div>
+                </div>
+                <div class="detail-score">{pts}</div>
+            </div>''')
+        details_html = '\n'.join(items)
+    else:
+        details_html = '<div class="no-details">暂无详细评分数据</div>'
+
+    # 附件列表
+    attachments_html = ''
+    if sub.get('attachments'):
+        att_items = []
+        for att in sub['attachments']:
+            fname = html.escape(att.get('file_name', '附件'))
+            att_items.append(f'<div class="attachment-item">📎 {fname}</div>')
+        attachments_html = '\n'.join(att_items)
+    else:
+        attachments_html = '<div class="no-attachments">未提交附件</div>'
+
+    # 分数颜色
+    score_color = '#10b981' if final_score is not None and final_score >= 80 else ('#f59e0b' if final_score is not None and final_score >= 60 else '#ef4444')
+    score_display = f'{final_score}' if final_score is not None else '未评分'
+    score_label = '分' if final_score is not None else ''
+
+    # 评语样式
+    feedback_box = ''
+    if feedback:
+        feedback_box = f'''
+        <div class="feedback-box">
+            <div class="feedback-label">评语</div>
+            <div class="feedback-text">{feedback}</div>
+        </div>'''
+
+    return f'''<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{student_name} - {html.escape(hw.get('title','作业'))} 批改报告</title>
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    padding: 40px 20px;
+}}
+.container {{
+    max-width: 720px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 24px;
+    box-shadow: 0 25px 80px rgba(0,0,0,0.25);
+    overflow: hidden;
+}}
+.header {{
+    background: linear-gradient(135deg, #1e3a5f 0%, #2d6a4f 100%);
+    padding: 40px 32px;
+    color: #fff;
+    position: relative;
+}}
+.header::after {{
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0; right: 0;
+    height: 60px;
+    background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.08));
+}}
+.homework-title {{
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    opacity: 0.9;
+}}
+.course-name {{
+    font-size: 14px;
+    opacity: 0.7;
+}}
+.student-section {{
+    padding: 32px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    border-bottom: 1px solid #f0f0f0;
+}}
+.avatar {{
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #2d6a4f, #40916c);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+    box-shadow: 0 4px 15px rgba(45,106,79,0.3);
+}}
+.student-info {{ flex: 1; }}
+.student-name {{
+    font-size: 22px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 4px;
+}}
+.student-meta {{
+    font-size: 13px;
+    color: #888;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}}
+.score-badge {{
+    width: 90px; height: 90px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, {score_color}, {score_color}dd);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    flex-shrink: 0;
+    box-shadow: 0 6px 20px {score_color}44;
+    position: relative;
+    overflow: hidden;
+}}
+.score-badge::before {{
+    content: '';
+    position: absolute;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 60%);
+}}
+.score-number {{
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1;
+}}
+.score-unit {{
+    font-size: 12px;
+    opacity: 0.85;
+    margin-top: 2px;
+}}
+.score-label {{
+    font-size: 11px;
+    opacity: 0.7;
+    margin-top: 2px;
+}}
+.content {{
+    padding: 32px;
+}}
+.section-title {{
+    font-size: 16px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}}
+.section-title::before {{
+    content: '';
+    width: 4px; height: 20px;
+    background: linear-gradient(180deg, #2d6a4f, #40916c);
+    border-radius: 2px;
+}}
+.feedback-box {{
+    background: linear-gradient(135deg, #fef9e7, #fdf4d0);
+    border-left: 4px solid #f0c040;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 24px;
+}}
+.feedback-label {{
+    font-size: 12px;
+    font-weight: 600;
+    color: #b8860b;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+}}
+.feedback-text {{
+    font-size: 15px;
+    color: #5c4a00;
+    line-height: 1.7;
+}}
+.details-panel {{
+    background: linear-gradient(180deg, #1e293b, #0f172a);
+    border-radius: 16px;
+    padding: 24px;
+    margin-bottom: 24px;
+}}
+.details-header {{
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+    color: #fbbf24;
+    font-size: 14px;
+    font-weight: 600;
+}}
+.detail-item {{
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+}}
+.detail-item:last-child {{ border-bottom: none; }}
+.detail-icon {{
+    font-size: 16px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}}
+.detail-text {{ flex: 1; }}
+.detail-title {{
+    font-size: 13px;
+    font-weight: 600;
+    color: #fbbf24;
+    margin-bottom: 3px;
+}}
+.detail-desc {{
+    font-size: 12px;
+    color: #94a3b8;
+    line-height: 1.5;
+}}
+.detail-score {{
+    font-size: 13px;
+    font-weight: 700;
+    color: #34d399;
+    flex-shrink: 0;
+    min-width: 40px;
+    text-align: right;
+}}
+.attachments-section {{
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 20px;
+}}
+.attachment-item {{
+    font-size: 13px;
+    color: #475569;
+    padding: 8px 0;
+    border-bottom: 1px dashed #e2e8f0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}}
+.attachment-item:last-child {{ border-bottom: none; }}
+.no-details, .no-attachments {{
+    text-align: center;
+    padding: 24px;
+    color: #94a3b8;
+    font-size: 13px;
+}}
+.footer {{
+    padding: 20px 32px;
+    text-align: center;
+    border-top: 1px solid #f0f0f0;
+    color: #aaa;
+    font-size: 12px;
+}}
+.footer-logo {{
+    font-weight: 700;
+    color: #2d6a4f;
+    margin-bottom: 4px;
+}}
+@media print {{
+    body {{ background: #fff; padding: 0; }}
+    .container {{ box-shadow: none; border-radius: 0; }}
+}}
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <div class="homework-title">{html.escape(hw.get('title','作业'))}</div>
+        <div class="course-name">{html.escape(hw.get('course_name',''))} · 总分 {hw.get('total_score',100)}分</div>
+    </div>
+
+    <div class="student-section">
+        <div class="avatar">{student_name[0] if student_name else '?'}</div>
+        <div class="student-info">
+            <div class="student-name">{student_name}</div>
+            <div class="student-meta">
+                <span>学号：{student_number}</span>
+                <span>提交时间：{submitted_at or '未提交'}</span>
+            </div>
+        </div>
+        <div class="score-badge">
+            <div class="score-number">{score_display}</div>
+            <div class="score-unit">{score_label}</div>
+            <div class="score-label">得分</div>
+        </div>
+    </div>
+
+    <div class="content">
+        {feedback_box}
+
+        <div class="section-title">评分详情</div>
+        <div class="details-panel">
+            <div class="details-header">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+                自动评分明细
+            </div>
+            {details_html}
+        </div>
+
+        <div class="section-title">提交附件</div>
+        <div class="attachments-section">
+            {attachments_html}
+        </div>
+    </div>
+
+    <div class="footer">
+        <div class="footer-logo">智慧课堂 SmartClass</div>
+        <div>生成时间：{datetime.now().strftime('%Y/%m/%d %H:%M:%S')}</div>
+    </div>
+</div>
+</body>
+</html>'''
 
 # ======= 学生端通知 =======
 @app.route('/api/student/notifications', methods=['GET'])
