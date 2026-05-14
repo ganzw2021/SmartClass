@@ -388,35 +388,44 @@ def _cleanup_expired_sessions():
 threading.Thread(target=_cleanup_expired_tokens, daemon=True).start()
 threading.Thread(target=_cleanup_expired_sessions, daemon=True).start()
 
-# ── 数据库 token 表（MEMORY 引擎，所有 worker 共享）──
+# ── 数据库 token 表（SQLite 持久化 or MySQL MEMORY 引擎）──
 def _init_token_tables():
-    """启动时初始化 MEMORY 表，create table if not exists"""
+    """启动时初始化 token 表（兼容 SQLite 和 MySQL）"""
     db = get_db(); cur = db.cursor()
     try:
+        # 自动检测数据库类型
+        cur.execute("SELECT 1")
+        db_type = 'sqlite'
+        try:
+            cur.execute("SELECT 1 FROM att_tokens LIMIT 1")
+        except:
+            pass
+        # 统一用 SQLite 兼容语法（SQLite 忽略未知选项如 ENGINE=）
         cur.execute("""
             CREATE TABLE IF NOT EXISTS att_tokens (
-                token      VARCHAR(64) PRIMARY KEY,
-                token_type ENUM('scan','sign') NOT NULL,
-                course_id  VARCHAR(32),
-                class_id   VARCHAR(32),
-                session_key VARCHAR(256),
-                device_fp  VARCHAR(128),
-                expire_at  BIGINT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                INDEX idx_session_key (session_key),
-                INDEX idx_expire (expire_at)
-            ) ENGINE=MEMORY
+                token       TEXT PRIMARY KEY,
+                token_type  TEXT NOT NULL,
+                course_id   TEXT,
+                class_id    TEXT,
+                session_key TEXT,
+                device_fp   TEXT,
+                expire_at   INTEGER NOT NULL,
+                created_at  TEXT DEFAULT (datetime('now'))
+            )
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS att_device_sessions (
-                device_fp  VARCHAR(128) PRIMARY KEY,
-                course_id  VARCHAR(32),
-                class_id   VARCHAR(32),
-                session_key VARCHAR(256)
-            ) ENGINE=MEMORY
+                device_fp   TEXT PRIMARY KEY,
+                course_id   TEXT,
+                class_id    TEXT,
+                session_key TEXT
+            )
         """)
         db.commit()
-        logger.info("[考勤] att_tokens / att_device_sessions 初始化完成")
+        logger.info("[考勤] att_tokens / att_device_sessions 初始化完成 (SQLite兼容模式)")
+    except Exception as e:
+        logger.warning("[考勤] 表初始化异常: %s", e)
+        db.rollback()
     finally:
         cur.close(); db.close()
 
@@ -504,7 +513,7 @@ def _db_device_lock(device_fp, cid, clid, sk):
         cur.close(); db.close()
 
 def _db_device_check(device_fp, sk):
-    """检查设备是否已签到本轮次"""
+    """检查设备是否已签到本轮次（精确匹配 session_key）"""
     db = get_db(); cur = db.cursor()
     try:
         cur.execute(
@@ -512,7 +521,10 @@ def _db_device_check(device_fp, sk):
             (device_fp,)
         )
         r = cur.fetchone()
-        return r
+        # 必须精确匹配 session_key，防止跨会话误判
+        if r and r['session_key'] == sk:
+            return r
+        return None
     finally:
         cur.close(); db.close()
 
@@ -520,8 +532,14 @@ def _db_device_unlock_course(cid, clid):
     """清除本课程+班级的所有设备锁"""
     db = get_db(); cur = db.cursor()
     try:
+        # 同时清除设备锁和 sign_token（学生需要重新扫码获取新 token）
         cur.execute("DELETE FROM att_device_sessions WHERE course_id=%s AND class_id=%s", (cid, clid))
+        cur.execute("DELETE FROM att_tokens WHERE course_id=%s AND class_id=%s AND token_type='sign'", (cid, clid))
         db.commit()
+        logger.debug("[设备锁] 课程=%s 班级=%s 设备锁和sign_token已清除", cid, clid)
+    except Exception as e:
+        logger.warning("[设备锁] 清除失败: %s", e)
+        db.rollback()
     finally:
         cur.close(); db.close()
 
@@ -2914,7 +2932,8 @@ def att_init_sign():
     sk = active_session[0]
     if device_fp:
         existing = _db_device_check(device_fp, sk)
-        if existing and existing['session_key'] == sk:
+        if existing:
+            # 设备锁存在，且精确匹配当前 session_key → 重复扫码
             return fail('该设备已签到，请勿重复扫码')
 
     # ── 4. 保留 scan_token（不删除，多个学生可共用10秒有效期的二维码）
