@@ -157,7 +157,7 @@ const props = defineProps({
 const emit = defineEmits(['sync-complete'])
 
 // 后端地址配置（用于生成二维码 URL）
-const BACKEND_BASE = import.meta.env.VITE_BACKEND_BASE || 'http://localhost:5000'
+const BACKEND_BASE = import.meta.env.VITE_BACKEND_BASE || window.location.origin
 
 // 状态
 const selectedCourse = ref('')
@@ -249,7 +249,7 @@ async function loadClassStudents() {
 // 生成二维码 - 最大化尺寸，最简化
 async function generateQRCodeImage(token) {
   try {
-    const url = `${BACKEND_BASE}/sign?cid=${selectedCourse.value}&clid=${selectedClass.value}&t=${Date.now()}&token=${token}`
+    const url = `${window.location.origin}/sign?cid=${selectedCourse.value}&clid=${selectedClass.value}&t=${Date.now()}&token=${token}`
     // 使用低纠错级别 + 充足白色边框，让二维码更简单、更容易扫描
     const dataUrl = await QRCode.toDataURL(url, {
       width: 360,                  // 固定尺寸（显示区域限制）

@@ -30,7 +30,7 @@ logging.basicConfig(
 logger = logging.getLogger('smartclass')
 
 DB_CONFIG = {
-    'host':'127.0.0.1','port':3306,'user':'root','password':'Root@123456',
+    'host':os.environ.get('DB_HOST','127.0.0.1'),'port':int(os.environ.get('DB_PORT','3306')),'user':os.environ.get('DB_USER','smartclass'),'password':os.environ.get('DB_PASSWORD',''),
     'database':'smartclass','charset':'utf8mb4','autocommit':True,
     'connect_timeout': 10,       # 连接超时 10 秒
     'read_timeout': 30,          # 读超时 30 秒
@@ -116,6 +116,7 @@ def teacher_required(f):
         u=get_user(request)
         if not u or u.get('role') not in ('teacher','admin'): return err('未授权',401)
         request.teacher_id=u['user_id']
+        request.auth_role=u.get('role')
         return f(*a,**k)
     return d
 
@@ -201,7 +202,7 @@ def auth_me():
     db=get_db(); cur=db.cursor()
     cur.execute("SELECT id,username,real_name FROM teachers WHERE id=%s",(request.teacher_id,))
     u=cur.fetchone(); db.close()
-    return success({'id':u['id'],'username':u['username'],'name':u.get('real_name',u['username']),'role':'teacher'}) if u else err('用户不存在',404)
+    return success({'id':u['id'],'username':u['username'],'name':u.get('real_name',u['username']),'role':getattr(request,'auth_role','teacher')}) if u else err('用户不存在',404)
 
 @app.route('/api/auth/change_password', methods=['POST'])
 @teacher_required
@@ -315,6 +316,158 @@ def delete_course(course_id):
     db.close(); return success()
 
 # ======= 成绩管理 =======
+
+# ======= 积分榜 =======
+def _init_points_tables():
+    """初始化课程维度积分表，并迁移旧版仅按班级保存的结构。"""
+    db = get_db(); cur = db.cursor()
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS point_scores (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                course_id VARCHAR(50) NULL,
+                class_id VARCHAR(64) NOT NULL,
+                student_id INT NOT NULL,
+                attendance_score DECIMAL(10,2) NOT NULL DEFAULT 20,
+                classroom_score DECIMAL(10,2) NOT NULL DEFAULT 0,
+                homework_adjustment DECIMAL(10,2) NOT NULL DEFAULT 0,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                KEY idx_point_course_class (course_id, class_id),
+                KEY idx_point_student (student_id)
+            ) ENGINE=InnoDB
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS point_score_logs (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                course_id VARCHAR(50) NULL,
+                class_id VARCHAR(64) NOT NULL,
+                student_id INT NOT NULL,
+                teacher_id INT NULL,
+                category VARCHAR(20) NOT NULL,
+                delta DECIMAL(10,2) NOT NULL,
+                reason VARCHAR(255) DEFAULT '',
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                KEY idx_point_log_course (course_id, class_id, created_at),
+                KEY idx_point_log_student (student_id, created_at)
+            ) ENGINE=InnoDB
+        """)
+
+        for table_name in ('point_scores', 'point_score_logs'):
+            cur.execute("""SELECT 1 FROM information_schema.COLUMNS
+                           WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s
+                             AND COLUMN_NAME='course_id' LIMIT 1""", (table_name,))
+            if not cur.fetchone():
+                cur.execute(f"ALTER TABLE {table_name} ADD COLUMN course_id VARCHAR(50) NULL AFTER id")
+
+        # 可唯一归属到单一课程的历史记录自动补齐课程；一个班级关联多门课程时
+        # 不猜测归属，保留 NULL，避免把旧积分错误复制到某门课程。
+        for table_name in ('point_scores', 'point_score_logs'):
+            cur.execute(f"""UPDATE {table_name} ps
+                           JOIN (
+                             SELECT class_id, MIN(course_id) AS course_id
+                             FROM course_classes
+                             GROUP BY class_id
+                             HAVING COUNT(DISTINCT course_id)=1
+                           ) one_course ON one_course.class_id=ps.class_id
+                           SET ps.course_id=one_course.course_id
+                           WHERE ps.course_id IS NULL""")
+
+        # 删除旧版 (class_id, student_id) 唯一约束，否则同一学生无法在不同
+        # 课程下建立独立积分记录。
+        cur.execute("""SELECT INDEX_NAME,
+                              GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS columns
+                       FROM information_schema.STATISTICS
+                       WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='point_scores'
+                         AND NON_UNIQUE=0 AND INDEX_NAME<>'PRIMARY'
+                       GROUP BY INDEX_NAME""")
+        for index in cur.fetchall():
+            if index['columns'] == 'class_id,student_id':
+                cur.execute(f"ALTER TABLE point_scores DROP INDEX `{index['INDEX_NAME']}`")
+
+        cur.execute("""SELECT 1 FROM information_schema.STATISTICS
+                       WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='point_scores'
+                         AND INDEX_NAME='uq_point_course_student' LIMIT 1""")
+        if not cur.fetchone():
+            cur.execute("""CREATE UNIQUE INDEX uq_point_course_student
+                           ON point_scores (course_id, class_id, student_id)""")
+        db.commit()
+    finally:
+        cur.close(); db.close()
+
+@app.route('/api/points', methods=['GET'])
+@teacher_required
+def get_points_board():
+    course_id = str(request.args.get('course_id','')).strip()
+    clid = str(request.args.get('class_id','')).strip()
+    if not course_id or not clid: return err('course_id 和 class_id 不能为空')
+    if not _teacher_owns_course_class(course_id, clid, request.teacher_id):
+        return err('无权操作此课程或班级', 403)
+    db=get_db(); cur=db.cursor()
+    cur.execute('SELECT COUNT(*) AS cnt FROM homework WHERE course_id=%s AND class_id=%s',(course_id, clid))
+    hw_count=int((cur.fetchone() or {}).get('cnt') or 0)
+    # 参数顺序对应课程维度积分连接、作业统计子查询和花名册班级。
+    cur.execute('''
+      SELECT s.id AS student_id, s.name AS student_name, s.student_number AS student_number,
+             COALESCE(ps.attendance_score,20) AS attendance_score,
+             COALESCE(ps.classroom_score,0) AS classroom_score,
+             COALESCE(ps.homework_adjustment,0) AS homework_adjustment,
+             COALESCE(hr.total_score,0) AS ladder_score
+      FROM students s
+      LEFT JOIN point_scores ps ON ps.course_id=%s AND ps.class_id=s.class_id AND ps.student_id=s.id
+      LEFT JOIN (
+        SELECT latest.student_id, SUM(latest.score) AS total_score
+        FROM (
+          SELECT hs.student_id, hs.homework_id, hs.score,
+                 ROW_NUMBER() OVER (PARTITION BY hs.student_id, hs.homework_id ORDER BY hs.submitted_at DESC) AS rn
+          FROM homework_submissions hs
+          JOIN homework h ON h.id=hs.homework_id
+          WHERE h.course_id=%s AND h.class_id=%s AND hs.score IS NOT NULL
+        ) latest
+        WHERE latest.rn=1
+        GROUP BY latest.student_id
+      ) hr ON hr.student_id=s.id
+      WHERE s.class_id=%s ORDER BY s.name''', (course_id, course_id, clid, clid))
+    rows=[]
+    for r in cur.fetchall():
+        base=(float(r.get('ladder_score') or 0)/hw_count*0.2) if hw_count else 0.0
+        r['homework_base']=round(base,2)
+        r['homework_score']=round(base,2)
+        r['total_score']=round(float(r.get('attendance_score') or 0)+r['homework_score']+float(r.get('classroom_score') or 0),2)
+        rows.append(r)
+    db.close(); rows.sort(key=lambda x:(-x['total_score'],x['student_name']))
+    for i,r in enumerate(rows,1): r['rank']=i
+    rows.sort(key=lambda x:(not bool(str(x.get('student_number') or '')), str(x.get('student_number') or ''), x['student_name']))
+    return success({'course_id':course_id,'class_id':clid,'homework_count':hw_count,'rows':rows})
+
+@app.route('/api/points/adjust', methods=['POST'])
+@teacher_required
+def adjust_points():
+    d=request.get_json() or {}; course_id=str(d.get('course_id','')); clid=str(d.get('class_id','')); sid=int(d.get('student_id') or 0)
+    category=str(d.get('category','')); delta=float(d.get('delta') or 0); reason=(d.get('reason') or '').strip()
+    if not course_id or not clid or not sid or category not in ('attendance','classroom') or delta==0: return err('参数不完整')
+    if not _teacher_owns_course_class(course_id, clid, request.teacher_id):
+        return err('无权操作此课程或班级', 403)
+    db=get_db(); cur=db.cursor()
+    cur.execute('SELECT id,name FROM students WHERE id=%s AND class_id=%s',(sid,clid)); stu=cur.fetchone()
+    if not stu: db.close(); return err(' ',404)
+    cur.execute('''INSERT INTO point_scores (course_id,class_id,student_id,attendance_score,classroom_score,homework_adjustment)
+      VALUES (%s,%s,%s,20,0,0) ON DUPLICATE KEY UPDATE student_id=VALUES(student_id)''',(course_id,clid,sid))
+    col={'attendance':'attendance_score','classroom':'classroom_score'}[category]
+    cur.execute(f'UPDATE point_scores SET {col}={col}+%s,updated_at=NOW() WHERE course_id=%s AND class_id=%s AND student_id=%s',(delta,course_id,clid,sid))
+    cur.execute('INSERT INTO point_score_logs (course_id,class_id,student_id,teacher_id,category,delta,reason) VALUES (%s,%s,%s,%s,%s,%s,%s)',(course_id,clid,sid,request.teacher_id,category,delta,reason))
+    db.close(); return success()
+
+@app.route('/api/points/logs', methods=['GET'])
+@teacher_required
+def get_point_logs():
+    course_id=str(request.args.get('course_id','')); clid=str(request.args.get('class_id','')); sid=request.args.get('student_id')
+    if not course_id or not clid: return err('course_id 和 class_id 不能为空')
+    if not _teacher_owns_course_class(course_id, clid, request.teacher_id): return err('无权操作此课程或班级', 403)
+    db=get_db(); cur=db.cursor(); q='''SELECT l.*,t.username AS teacher_username FROM point_score_logs l LEFT JOIN teachers t ON t.id=l.teacher_id WHERE l.course_id=%s AND l.class_id=%s'''; args=[course_id,clid]
+    if sid: q+=' AND l.student_id=%s'; args.append(int(sid))
+    q+=' ORDER BY l.created_at DESC LIMIT 200'; cur.execute(q,args); rows=cur.fetchall(); db.close(); return success(_rows(rows))
+
+
 @app.route('/api/scores', methods=['GET'])
 @teacher_required
 def get_scores():
@@ -354,16 +507,15 @@ def save_score_config():
     db.close(); return success()
 
 # ======= 考勤 =======
-_att_sessions={}   # 内存会话：session_key → {course_id, class_id, teacher_id, start_time, active}
-                   # signed_names 从 attendance_records DB 实时查询，不再存内存
+# 活跃签到会话、令牌和设备锁均存于 MySQL，避免多 Gunicorn worker 的内存隔离。
 
 def _cleanup_expired_tokens():
-    """定时清理过期的 att_tokens（每5分钟执行一次）"""
+    """定时清理所有过期的扫码和签到令牌（每5分钟执行一次）。"""
     while True:
         time.sleep(300)  # 5分钟
         try:
             db = get_db(); cur = db.cursor()
-            cur.execute("DELETE FROM att_tokens WHERE expire_at < %s AND token_type='scan'", (int(time.time()),))
+            cur.execute("DELETE FROM att_tokens WHERE expire_at < %s", (int(time.time()),))
             affected = cur.rowcount
             db.commit(); db.close()
             if affected > 0:
@@ -372,19 +524,18 @@ def _cleanup_expired_tokens():
             logger.error("[考勤] 清理 token 失败: %s", e)
 
 def _cleanup_expired_sessions():
-    """定时清理 24 小时前非活跃的 _att_sessions（每1小时执行一次）"""
+    """定时关闭持续超过 24 小时的活跃签到会话（每 1 小时执行一次）。"""
     while True:
         time.sleep(3600)  # 1小时
         try:
-            cutoff = datetime.now() - timedelta(hours=24)
-            expired_keys = []
-            for k, v in _att_sessions.items():
-                if not v.get('active') and v.get('start_time', datetime.now()) < cutoff:
-                    expired_keys.append(k)
-            for k in expired_keys:
-                del _att_sessions[k]
-            if expired_keys:
-                logger.info("[考勤] 清理过期 session %d 条", len(expired_keys))
+            db = get_db(); cur = db.cursor()
+            cur.execute("""UPDATE attendance_sessions
+                           SET active=0, ended_at=COALESCE(ended_at, NOW())
+                           WHERE active=1 AND started_at < DATE_SUB(NOW(), INTERVAL 24 HOUR)""")
+            affected = cur.rowcount
+            db.commit(); cur.close(); db.close()
+            if affected:
+                logger.info("[考勤] 自动关闭过期 session %d 条", affected)
         except Exception as e:
             logger.error("[考勤] 清理 session 失败: %s", e)
 
@@ -392,35 +543,122 @@ def _cleanup_expired_sessions():
 threading.Thread(target=_cleanup_expired_tokens, daemon=True).start()
 threading.Thread(target=_cleanup_expired_sessions, daemon=True).start()
 
-# ── 数据库 token 表（MEMORY 引擎，所有 worker 共享）──
+# ── 数据库会话、令牌与设备锁（InnoDB，所有 worker 共享且支持事务）──
 def _init_token_tables():
-    """启动时初始化 MEMORY 表（MySQL）"""
+    """启动时初始化考勤状态表，并迁移旧的 MEMORY 表。"""
     db = get_db(); cur = db.cursor()
     try:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS att_tokens (
                 token      VARCHAR(64) PRIMARY KEY,
                 token_type ENUM('scan','sign') NOT NULL,
-                course_id  VARCHAR(32),
-                class_id   VARCHAR(32),
+                course_id  VARCHAR(50),
+                class_id   VARCHAR(50),
                 session_key VARCHAR(256),
-                device_fp  VARCHAR(128),
+                device_id  VARCHAR(128),
                 expire_at  BIGINT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_session_key (session_key),
                 INDEX idx_expire (expire_at)
-            ) ENGINE=MEMORY
+            ) ENGINE=InnoDB
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS att_device_sessions (
-                device_fp  VARCHAR(128) PRIMARY KEY,
-                course_id  VARCHAR(32),
-                class_id   VARCHAR(32),
-                session_key VARCHAR(256)
-            ) ENGINE=MEMORY
+                device_id  VARCHAR(128) NOT NULL,
+                course_id  VARCHAR(50),
+                class_id   VARCHAR(50),
+                session_key VARCHAR(256) NOT NULL,
+                PRIMARY KEY (device_id, session_key),
+                KEY idx_device_course_class (course_id, class_id)
+            ) ENGINE=InnoDB
         """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS attendance_sessions (
+                session_key VARCHAR(256) NOT NULL PRIMARY KEY,
+                course_id VARCHAR(32) NOT NULL,
+                class_id VARCHAR(32) NOT NULL,
+                teacher_id VARCHAR(64) NOT NULL,
+                started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                ended_at DATETIME NULL,
+                active TINYINT(1) NOT NULL DEFAULT 1,
+                KEY idx_active_course_class (course_id, class_id, active),
+                KEY idx_active_teacher_course (teacher_id, course_id, active)
+            ) ENGINE=InnoDB
+        """)
+
+        # 兼容早期已经存在的 attendance_sessions 表。早期版本使用
+        # start_time/is_active；本版本统一使用 started_at/active，不能因
+        # CREATE TABLE IF NOT EXISTS 跳过建表而让运行时字段不存在。
+        cur.execute("""SELECT COLUMN_NAME FROM information_schema.COLUMNS
+                       WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='attendance_sessions'""")
+        session_columns = {row['COLUMN_NAME'] for row in cur.fetchall()}
+        if 'started_at' not in session_columns:
+            cur.execute("ALTER TABLE attendance_sessions ADD COLUMN started_at DATETIME NULL")
+            if 'start_time' in session_columns:
+                cur.execute("UPDATE attendance_sessions SET started_at=start_time WHERE started_at IS NULL")
+            cur.execute("UPDATE attendance_sessions SET started_at=NOW() WHERE started_at IS NULL")
+        if 'ended_at' not in session_columns:
+            cur.execute("ALTER TABLE attendance_sessions ADD COLUMN ended_at DATETIME NULL")
+        if 'active' not in session_columns:
+            cur.execute("ALTER TABLE attendance_sessions ADD COLUMN active TINYINT(1) NOT NULL DEFAULT 1")
+            if 'is_active' in session_columns:
+                cur.execute("UPDATE attendance_sessions SET active=is_active")
+
+        cur.execute("""SELECT 1 FROM information_schema.STATISTICS
+                       WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='attendance_sessions'
+                         AND INDEX_NAME='idx_active_course_class' LIMIT 1""")
+        if not cur.fetchone():
+            cur.execute("CREATE INDEX idx_active_course_class ON attendance_sessions (course_id, class_id, active)")
+        cur.execute("""SELECT 1 FROM information_schema.STATISTICS
+                       WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='attendance_sessions'
+                         AND INDEX_NAME='idx_active_teacher_course' LIMIT 1""")
+        if not cur.fetchone():
+            cur.execute("CREATE INDEX idx_active_teacher_course ON attendance_sessions (teacher_id, course_id, active)")
+
+        # 旧版本的令牌和设备锁使用 MEMORY 表；迁移到 InnoDB 才能事务化提交。
+        for table_name in ('att_tokens', 'att_device_sessions'):
+            cur.execute("""SELECT ENGINE FROM information_schema.TABLES
+                           WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s""", (table_name,))
+            table = cur.fetchone()
+            if table and table['ENGINE'].lower() != 'innodb':
+                cur.execute(f"ALTER TABLE {table_name} ENGINE=InnoDB")
+
+        # 历史版本使用 VARCHAR(32)，而课程与班级表均允许 VARCHAR(50)。
+        # 保持令牌表可承载合法的完整 ID，避免扫码启动时发生数据截断。
+        for table_name in ('att_tokens', 'att_device_sessions'):
+            for column_name in ('course_id', 'class_id'):
+                cur.execute("""SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS
+                               WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s AND COLUMN_NAME=%s""",
+                            (table_name, column_name))
+                column = cur.fetchone()
+                if column and (column['CHARACTER_MAXIMUM_LENGTH'] or 0) < 50:
+                    cur.execute(f"ALTER TABLE {table_name} MODIFY {column_name} VARCHAR(50) NULL")
+
+        cur.execute("""SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY ORDINAL_POSITION SEPARATOR ',') AS pk_columns
+                       FROM information_schema.KEY_COLUMN_USAGE
+                       WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='att_device_sessions'
+                         AND CONSTRAINT_NAME='PRIMARY'""")
+        primary_key = (cur.fetchone() or {}).get('pk_columns')
+        if primary_key != 'device_id,session_key':
+            cur.execute("ALTER TABLE att_device_sessions MODIFY session_key VARCHAR(256) NOT NULL")
+            cur.execute("ALTER TABLE att_device_sessions DROP PRIMARY KEY, ADD PRIMARY KEY (device_id, session_key)")
+
+        cur.execute("""SELECT 1 FROM information_schema.STATISTICS
+                       WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='attendance_records'
+                         AND INDEX_NAME='uq_attendance_record_session_key' LIMIT 1""")
+        if not cur.fetchone():
+            cur.execute("CREATE UNIQUE INDEX uq_attendance_record_session_key ON attendance_records (session_key)")
+
+        # 签到记录使用 "会话键:学生姓名"。会话键本身可包含最长 50 字符的
+        # 课程和班级 ID，历史的 VARCHAR(150) 在合法边界上会截断并导致提交失败。
+        cur.execute("""SELECT CHARACTER_MAXIMUM_LENGTH FROM information_schema.COLUMNS
+                       WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='attendance_records'
+                         AND COLUMN_NAME='session_key'""")
+        attendance_record_key = cur.fetchone()
+        if attendance_record_key and (attendance_record_key['CHARACTER_MAXIMUM_LENGTH'] or 0) < 256:
+            cur.execute("ALTER TABLE attendance_records MODIFY session_key VARCHAR(256) NOT NULL")
         db.commit()
-        logger.info("[考勤] att_tokens / att_device_sessions 初始化完成")
+        logger.info("[考勤] 持久化会话、令牌和设备锁初始化完成")
     finally:
         cur.close(); db.close()
 
@@ -456,8 +694,64 @@ def _ensure_indexes():
     finally:
         cur.close(); db.close()
 
+def _db_create_active_session(cid, clid, teacher_id):
+    """关闭同班旧会话并创建新的持久化活跃会话。"""
+    token = secrets.token_hex(8)
+    sk = f"{cid}:{clid}:{token}:{int(time.time() // 15)}"
+    db = get_db(); cur = db.cursor()
+    try:
+        db.begin()
+        cur.execute("""UPDATE attendance_sessions
+                       SET active=0, ended_at=NOW()
+                       WHERE course_id=%s AND class_id=%s AND active=1""", (cid, clid))
+        cur.execute("""INSERT INTO attendance_sessions
+                       (session_key,course_id,class_id,teacher_id,started_at,active)
+                       VALUES (%s,%s,%s,%s,NOW(),1)""", (sk, cid, clid, str(teacher_id)))
+        db.commit()
+        return sk
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        cur.close(); db.close()
+
+def _db_active_session_get(cid, clid):
+    """查询课程和班级当前活跃的会话。"""
+    db = get_db(); cur = db.cursor()
+    try:
+        cur.execute("""SELECT session_key,course_id,class_id,teacher_id,started_at
+                       FROM attendance_sessions
+                       WHERE course_id=%s AND class_id=%s AND active=1
+                       ORDER BY started_at DESC LIMIT 1""", (cid, clid))
+        return cur.fetchone()
+    finally:
+        cur.close(); db.close()
+
+def _db_session_get(session_key, cid, clid, active_only=False):
+    """验证会话归属，避免前端伪造 session_key。"""
+    db = get_db(); cur = db.cursor()
+    try:
+        sql = "SELECT session_key FROM attendance_sessions WHERE session_key=%s AND course_id=%s AND class_id=%s"
+        params = [session_key, cid, clid]
+        if active_only:
+            sql += " AND active=1"
+        cur.execute(sql, params)
+        return cur.fetchone()
+    finally:
+        cur.close(); db.close()
+
+def _db_deactivate_teacher_sessions(cid, teacher_id):
+    """停止指定教师在该课程下的所有活跃签到。"""
+    db = get_db(); cur = db.cursor()
+    try:
+        cur.execute("""UPDATE attendance_sessions SET active=0, ended_at=NOW()
+                       WHERE course_id=%s AND teacher_id=%s AND active=1""", (cid, str(teacher_id)))
+        db.commit()
+    finally:
+        cur.close(); db.close()
+
 def _db_scan_token_create(token, cid, clid, expire_at):
-    """生成扫码令牌（写入 DB + 内存备查）"""
+    """生成扫码令牌。"""
     db = get_db(); cur = db.cursor()
     try:
         cur.execute("DELETE FROM att_tokens WHERE token=%s AND token_type='scan'", (token,))
@@ -491,14 +785,14 @@ def _db_scan_token_del(token):
     finally:
         cur.close(); db.close()
 
-def _db_sign_token_create(sign_token, cid, clid, sk, device_fp, expire_at):
+def _db_sign_token_create(sign_token, cid, clid, sk, device_id, expire_at):
     """生成签到令牌"""
     db = get_db(); cur = db.cursor()
     try:
         cur.execute("DELETE FROM att_tokens WHERE token=%s AND token_type='sign'", (sign_token,))
         cur.execute(
-            "INSERT INTO att_tokens (token,token_type,course_id,class_id,session_key,device_fp,expire_at) VALUES (%s,'sign',%s,%s,%s,%s,%s)",
-            (sign_token, cid, clid, sk, device_fp, expire_at)
+            "INSERT INTO att_tokens (token,token_type,course_id,class_id,session_key,device_id,expire_at) VALUES (%s,'sign',%s,%s,%s,%s,%s)",
+            (sign_token, cid, clid, sk, device_id, expire_at)
         )
         db.commit()
     finally:
@@ -509,7 +803,7 @@ def _db_sign_token_get(sign_token):
     db = get_db(); cur = db.cursor()
     try:
         cur.execute(
-            "SELECT course_id,class_id,session_key,device_fp FROM att_tokens WHERE token=%s AND token_type='sign' AND expire_at>%s",
+            "SELECT course_id,class_id,session_key,device_id FROM att_tokens WHERE token=%s AND token_type='sign' AND expire_at>%s",
             (sign_token, int(time.time()))
         )
         return cur.fetchone()
@@ -525,33 +819,15 @@ def _db_sign_token_del(sign_token):
     finally:
         cur.close(); db.close()
 
-def _db_device_lock(device_fp, cid, clid, sk):
-    """设备指纹加锁"""
-    db = get_db(); cur = db.cursor()
-    try:
-        cur.execute(
-            "INSERT INTO att_device_sessions (device_fp,course_id,class_id,session_key) VALUES (%s,%s,%s,%s)",
-            (device_fp, cid, clid, sk)
-        )
-        db.commit()
-    except pymysql.err.IntegrityError:
-        db.rollback()
-    finally:
-        cur.close(); db.close()
-
-def _db_device_check(device_fp, sk):
+def _db_device_check(device_id, sk):
     """检查设备是否已签到本轮次（精确匹配 session_key）"""
     db = get_db(); cur = db.cursor()
     try:
         cur.execute(
-            "SELECT session_key FROM att_device_sessions WHERE device_fp=%s",
-            (device_fp,)
+            "SELECT 1 FROM att_device_sessions WHERE device_id=%s AND session_key=%s",
+            (device_id, sk)
         )
-        r = cur.fetchone()
-        # 必须精确匹配 session_key，防止跨会话误判
-        if r and r['session_key'] == sk:
-            return r
-        return None
+        return cur.fetchone()
     finally:
         cur.close(); db.close()
 
@@ -582,17 +858,27 @@ def _db_signed_names(sk):
     finally:
         cur.close(); db.close()
 
+def _teacher_owns_course_class(cid, clid, teacher_id):
+    """验证课程归属教师且班级确实属于该课程。"""
+    db = get_db(); cur = db.cursor()
+    try:
+        cur.execute("""SELECT 1 FROM courses c
+                       JOIN course_classes cc ON cc.course_id=c.id
+                       WHERE c.id=%s AND cc.class_id=%s AND c.teacher_id=%s LIMIT 1""",
+                    (cid, clid, teacher_id))
+        return bool(cur.fetchone())
+    finally:
+        cur.close(); db.close()
+
 @app.route('/api/attendance/start', methods=['POST'])
 @teacher_required
 def att_start():
     d=request.get_json() or {}
     cid=str(d.get('course_id','')); clid=str(d.get('class_id',''))
-    token=secrets.token_hex(8); ts=int(time.time()//15)
-    sk=f"{cid}:{clid}:{token}:{ts}"
-    # 每次开启签到：清空旧 session
-    for k in list(_att_sessions.keys()):
-        if _att_sessions[k]['course_id']==cid and _att_sessions[k]['class_id']==clid: _att_sessions[k]['active']=False
-    _att_sessions[sk]={'_sk':sk,'course_id':cid,'class_id':clid,'teacher_id':request.teacher_id,'start_time':datetime.now(),'active':True}
+    if not cid or not clid: return err('course_id 和 class_id 不能为空')
+    if not _teacher_owns_course_class(cid, clid, request.teacher_id):
+        return err('无权操作此课程或班级', 403)
+    sk = _db_create_active_session(cid, clid, request.teacher_id)
     # 清除本课程+班级的设备锁（教师可重新分配设备）
     _db_device_unlock_course(cid, clid)
     st=secrets.token_hex(16); _db_scan_token_create(st, cid, clid, int(time.time())+10)
@@ -602,16 +888,12 @@ def att_start():
 @teacher_required
 def att_qr():
     cid=request.args.get('course_id',''); clid=request.args.get('class_id','')
-    # 复用同一个 session_key（每次刷新 QR，session_key 不变）
-    active_sk = None
-    for sk, sv in _att_sessions.items():
-        if sv['course_id']==cid and sv['class_id']==clid and sv.get('active'):
-            active_sk = sk
-            break
-    if not active_sk:
-        token=secrets.token_hex(8); ts=int(time.time()//15)
-        active_sk=f"{cid}:{clid}:{token}:{ts}"
-        _att_sessions[active_sk]={'course_id':cid,'class_id':clid,'teacher_id':request.teacher_id,'start_time':datetime.now(),'active':True}
+    if not cid or not clid: return err('course_id 和 class_id 不能为空')
+    if not _teacher_owns_course_class(cid, clid, request.teacher_id):
+        return err('无权操作此课程或班级', 403)
+    active_session = _db_active_session_get(cid, clid)
+    if not active_session: return err('无进行中的签到', 404)
+    active_sk = active_session['session_key']
     st=secrets.token_hex(16); _db_scan_token_create(st, cid, clid, int(time.time())+10)
     return success({'qr_url':f"/sign?cid={cid}&clid={clid}&t={int(time.time()*1000)}&token={st}",'token':st,'session_key':active_sk})
 
@@ -621,19 +903,19 @@ def att_current_session():
     """返回当前活跃会话的已签到名单（从 DB 实时查询）"""
     cid = request.args.get('course_id', ''); clid = request.args.get('class_id', '')
     if not cid or not clid: return err('course_id 和 class_id 不能为空')
-    for sk, sv in _att_sessions.items():
-        if sv['course_id'] == cid and sv['class_id'] == clid and sv.get('active'):
-            signed_names = _db_signed_names(sk)
-            return success({'session_key': sk, 'signed_names': signed_names})
-    return err('无进行中的签到', 404)
+    if not _teacher_owns_course_class(cid, clid, request.teacher_id):
+        return err('无权操作此课程或班级', 403)
+    active_session = _db_active_session_get(cid, clid)
+    if not active_session: return err('无进行中的签到', 404)
+    sk = active_session['session_key']
+    return success({'session_key': sk, 'signed_names': _db_signed_names(sk)})
 
 @app.route('/api/attendance/reset', methods=['POST'])
 @teacher_required
 def att_reset():
     cid=request.args.get('cid','') or (request.get_json() or {}).get('course_id','')
     if not cid: return err('course_id 不能为空')
-    for k,v in _att_sessions.items():
-        if v['course_id']==cid and v['teacher_id']==request.teacher_id: v['active']=False
+    _db_deactivate_teacher_sessions(cid, request.teacher_id)
     return success()
 
 @app.route('/api/attendance/list', methods=['GET'])
@@ -657,19 +939,21 @@ def att_manual():
     
     # ── P0: 验证课程归属 ──
     db_check = get_db(); cur_check = db_check.cursor()
-    cur_check.execute("SELECT id FROM courses WHERE id=%s AND teacher_id=%s", (cid, request.teacher_id))
+    cur_check.execute("""SELECT 1 FROM courses c JOIN course_classes cc ON cc.course_id=c.id
+                         WHERE c.id=%s AND cc.class_id=%s AND c.teacher_id=%s LIMIT 1""",
+                      (cid, clid, request.teacher_id))
     if not cur_check.fetchone():
         db_check.close()
         return err('无权操作此课程', 403)
     db_check.close()
     
-    # 优先使用前端传来的 session_key（最可靠），其次从内存查找 QR 会话
+    # 仅使用校验过归属的前端会话；缺失时查询数据库中的活跃会话。
     sk=d.get('session_key','').strip() or None
+    if sk and not _db_session_get(sk, cid, clid):
+        return err('签到会话无效', 400)
     if not sk:
-        for k, v in _att_sessions.items():
-            if v['course_id']==cid and v['class_id']==clid and v.get('active'):
-                sk=k
-                break
+        active_session = _db_active_session_get(cid, clid)
+        sk = active_session['session_key'] if active_session else None
     
     # 如果找到 QR 会话 key，直接使用它（确保手动签到计入同一会话的报表）
     # 否则才用 manual: 前缀（表示这是一个独立的手动补签会话）
@@ -2877,7 +3161,13 @@ def admin_clear_student_accounts():
 @admin_required
 def admin_attendance_logs():
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT ar.*,t.real_name as teacher_name FROM attendance_records ar JOIN teachers t ON t.id=ar.teacher_id ORDER BY ar.sign_time DESC LIMIT 200")
+    cur.execute("""
+        SELECT ar.*, t.real_name AS teacher_name
+        FROM attendance_records ar
+        LEFT JOIN courses c ON c.id=ar.course_id
+        LEFT JOIN teachers t ON t.id=c.teacher_id
+        ORDER BY ar.sign_time DESC LIMIT 200
+    """)
     rows=cur.fetchall(); db.close(); return success(_rows(rows))
 
 @app.route('/api/admin/attendance_reports', methods=['GET'])
@@ -3212,13 +3502,17 @@ var signToken = null;
 var timeLeft = 15;
 var timerInterval = null;
 
-// ── 设备指纹 ──
-var deviceFp = '';
+// ── 持久化随机设备 ID ──
+// 不读取真实硬件标识；同一浏览器环境在同一考勤场次内保持同一 ID。
+var deviceId = '';
 (function(){
-  var ua = navigator.userAgent;
-  var scr = window.screen.width+'x'+window.screen.height+'x'+window.screen.colorDepth;
-  var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  deviceFp = btoa(unescape(encodeURIComponent(ua+'|'+scr+'|'+tz))).substring(0,64);
+  var key = 'smartclass_device_id';
+  try { deviceId = localStorage.getItem(key) || ''; } catch (e) {}
+  if (!deviceId) {
+    if (window.crypto && crypto.randomUUID) deviceId = crypto.randomUUID();
+    else deviceId = 'd-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+    try { localStorage.setItem(key, deviceId); } catch (e) {}
+  }
 })();
 
 // ── init_sign ──
@@ -3227,7 +3521,7 @@ async function initSign() {
     var r = await fetch('/api/attendance/init_sign', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({token:scanToken, cid:cid, clid:clid, device_fp:deviceFp})
+      body: JSON.stringify({token:scanToken, cid:cid, clid:clid, device_id:deviceId})
     });
     var d = await r.json();
     if (d.success && d.data && d.data.sign_token) {
@@ -3393,7 +3687,7 @@ def att_init_sign():
     token  = (d.get('token') or '').strip()
     cid    = str(d.get('cid') or '').strip()
     clid   = str(d.get('clid') or '').strip()
-    device_fp = (d.get('device_fp') or '').strip()
+    device_id = (d.get('device_id') or '').strip()
 
     if not token: return fail('签到令牌缺失，请重新扫码')
     if not cid or not clid: return fail('参数不完整，请重新扫码')
@@ -3402,23 +3696,18 @@ def att_init_sign():
     tk = _db_scan_token_get(token)
     if not tk:
         return fail('二维码已失效，请重新扫码')
-    if tk['course_id'] != cid:
+    if tk['course_id'] != cid or tk['class_id'] != clid:
         return fail('二维码无效，请重新扫码')
 
-    # ── 2. 找活跃会话（教师是否在签到）──
-    active_session = None
-    for sk, sv in _att_sessions.items():
-        if sv['course_id'] == cid and sv['class_id'] == clid and sv.get('active'):
-            active_session = (sk, sv)
-            break
-
+    # ── 2. 从持久化会话表查询教师是否仍在签到 ──
+    active_session = _db_active_session_get(cid, clid)
     if not active_session:
         return fail('签到已结束，请联系教师手动补签')
 
     # ── 3. 设备指纹防重：同一设备本轮次只能签到一次 ──
-    sk = active_session[0]
-    if device_fp:
-        existing = _db_device_check(device_fp, sk)
+    sk = active_session['session_key']
+    if device_id:
+        existing = _db_device_check(device_id, sk)
         if existing:
             # 设备锁存在，且精确匹配当前 session_key → 重复扫码
             return fail('该设备已签到，请勿重复扫码')
@@ -3426,7 +3715,7 @@ def att_init_sign():
     # ── 4. 保留 scan_token（不删除，多个学生可共用10秒有效期的二维码）
     #     生成 sign_token（15秒签到窗口）
     sign_token = secrets.token_hex(16)
-    _db_sign_token_create(sign_token, cid, clid, sk, device_fp, int(time.time())+15)
+    _db_sign_token_create(sign_token, cid, clid, sk, device_id, int(time.time())+15)
 
     return success({'sign_token': sign_token, 'expires_in': 15})
 
@@ -3443,44 +3732,61 @@ def att_submit():
     if not sign_token: return fail('签到令牌缺失，请重新扫码')
     if not cid or not clid: return fail('参数不完整，请重新扫码')
 
-    # ── 1. 校验 sign_token（从 DB 读取）──
-    tk = _db_sign_token_get(sign_token)
-    if not tk:
-        return fail('签到已过期，请重新扫码')
-    if tk['course_id'] != cid or tk['class_id'] != clid:
-        return fail('签到令牌无效')
-
-    # ── 2. 查花名册 ──
+    # ── 1. 查花名册 ──
     db = get_db(); cur = db.cursor()
-    cur.execute("SELECT name FROM students WHERE class_id=%s", (clid,))
-    roster = [r['name'] for r in cur.fetchall()]
-    if roster and name not in roster:
-        db.close()
-        return fail(f'"{name}" 不在该班级花名册中，请确认姓名或联系教师手动补签')
+    try:
+        # 令牌、设备锁、签到记录在一个事务中处理。两个并发提交只能有一个成功。
+        db.begin()
+        cur.execute("""SELECT course_id,class_id,session_key,device_id FROM att_tokens
+                       WHERE token=%s AND token_type='sign' AND expire_at>%s FOR UPDATE""",
+                    (sign_token, int(time.time())))
+        tk = cur.fetchone()
+        if not tk:
+            db.rollback()
+            return fail('签到已过期，请重新扫码')
+        if tk['course_id'] != cid or tk['class_id'] != clid:
+            db.rollback()
+            return fail('签到令牌无效')
 
-    # ── 3. 防重复签到（从 DB 查询已签到名单）──
-    sk = tk['session_key']
-    signed_names = _db_signed_names(sk)
-    if name in signed_names:
-        db.close()
-        return fail(f'"{name}" 已签到，请勿重复提交')
+        sk = tk['session_key']
+        cur.execute("""SELECT 1 FROM attendance_sessions
+                       WHERE session_key=%s AND course_id=%s AND class_id=%s AND active=1 FOR UPDATE""",
+                    (sk, cid, clid))
+        if not cur.fetchone():
+            db.rollback()
+            return fail('签到已结束，请联系教师手动补签')
 
-    # ── 4. 消耗 sign_token，写入 DB，记录设备锁 ──
-    _db_sign_token_del(sign_token)
+        cur.execute("SELECT 1 FROM students WHERE class_id=%s AND name=%s LIMIT 1", (clid, name))
+        if not cur.fetchone():
+            db.rollback()
+            return fail(f'"{name}" 不在该班级花名册中，请确认姓名或联系教师手动补签')
 
-    sign_key = f"{sk}:{name}"
-    cur.execute(
-        "INSERT INTO attendance_records (session_key,course_id,class_id,student_name,sign_time)"
-        " VALUES (%s,%s,%s,%s,%s)"
-        " ON DUPLICATE KEY UPDATE sign_time=VALUES(sign_time)",
-        (sign_key, cid, clid, name, datetime.now())
-    )
-    db.close()
+        device_id = tk.get('device_id')
+        if device_id:
+            try:
+                cur.execute("""INSERT INTO att_device_sessions (device_id,course_id,class_id,session_key)
+                               VALUES (%s,%s,%s,%s)""", (device_id, cid, clid, sk))
+            except pymysql.err.IntegrityError:
+                db.rollback()
+                return fail('该设备已签到，请勿重复扫码')
 
-    # 记录设备指纹，防止该设备本轮次再次签到
-    device_fp = tk.get('device_fp')
-    if device_fp:
-        _db_device_lock(device_fp, cid, clid, sk)
+        sign_key = f"{sk}:{name}"
+        try:
+            cur.execute("""INSERT INTO attendance_records
+                           (session_key,course_id,class_id,student_name,sign_time)
+                           VALUES (%s,%s,%s,%s,%s)""", (sign_key, cid, clid, name, datetime.now()))
+        except pymysql.err.IntegrityError:
+            db.rollback()
+            return fail(f'"{name}" 已签到，请勿重复提交')
+
+        cur.execute("DELETE FROM att_tokens WHERE token=%s AND token_type='sign'", (sign_token,))
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception('[考勤] 提交签到事务失败')
+        return fail('签到失败，请稍后重试')
+    finally:
+        cur.close(); db.close()
 
     # 计算签到名次（从 DB 重新查，保证准确性）
     updated_names = _db_signed_names(sk)
@@ -3491,6 +3797,7 @@ def att_submit():
 
 if __name__ == '__main__':
     _init_token_tables()
+    _init_points_tables()
     _ensure_indexes()
     logger.info("[启动] 考勤 token 表初始化完成，关键索引检查完成，开始监听...")
     print("Starting SmartClass Backend on http://0.0.0.0:5000")
@@ -3504,6 +3811,7 @@ if __name__ == '__main__':
 def _startup_check():
     if not hasattr(app, '_indexes_ok'):
         _init_token_tables()
+        _init_points_tables()
         _ensure_indexes()
         app._indexes_ok = True
         logger.info("[启动] 索引初始化完成")

@@ -800,3 +800,13 @@ export function downloadFile(path, filename) {
 }
 
 export default api
+
+export async function getPointsBoard(courseId, classId) {
+  return await api.get(`/points?course_id=${courseId}&class_id=${classId}`)
+}
+export async function adjustPoints(data) {
+  return await api.post('/points/adjust', data)
+}
+export async function getPointLogs(courseId, classId, studentId='') {
+  return await api.get(`/points/logs?course_id=${courseId}&class_id=${classId}${studentId ? `&student_id=${studentId}` : ''}`)
+}
