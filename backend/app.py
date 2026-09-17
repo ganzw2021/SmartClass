@@ -3095,6 +3095,127 @@ def admin_add_class_student(class_id):
     db.close()
     return success({'added': len(added), 'skipped': len(skipped), 'students': added, 'skipped_details': skipped})
 
+@app.route('/api/admin/classes/<class_id>/students/<int:sid>', methods=['PUT', 'PATCH'])
+@admin_required
+def admin_update_class_student(class_id, sid):
+    d = request.get_json(silent=True)
+    if not isinstance(d, dict):
+        return err('请求数据格式错误')
+
+    allowed_fields = {'name', 'student_number', 'sort_order'}
+    if not any(field in d for field in allowed_fields):
+        return err('至少需要提供一项学生信息')
+
+    db = get_db(); cur = db.cursor()
+    try:
+        db.begin()
+        cur.execute(
+            "SELECT id,name,student_number,sort_order FROM students "
+            "WHERE id=%s AND class_id=%s FOR UPDATE",
+            (sid, class_id)
+        )
+        student = cur.fetchone()
+        if not student:
+            db.rollback()
+            return err('该班级中不存在此学生', 404)
+
+        name = student['name']
+        if 'name' in d:
+            if not isinstance(d.get('name'), str):
+                db.rollback()
+                return err('姓名格式错误')
+            name = d['name'].strip()
+            if not name:
+                db.rollback()
+                return err('姓名不能为空')
+            if len(name) > 50:
+                db.rollback()
+                return err('姓名不能超过50个字符')
+
+        student_number = student.get('student_number') or ''
+        if 'student_number' in d:
+            raw_student_number = d.get('student_number')
+            if raw_student_number is None:
+                student_number = ''
+            elif isinstance(raw_student_number, (str, int)) and not isinstance(raw_student_number, bool):
+                student_number = str(raw_student_number).strip()
+            else:
+                db.rollback()
+                return err('学号格式错误')
+            if len(student_number) > 50:
+                db.rollback()
+                return err('学号不能超过50个字符')
+
+        sort_order = student.get('sort_order')
+        if 'sort_order' in d:
+            raw_sort_order = d.get('sort_order')
+            if isinstance(raw_sort_order, bool):
+                db.rollback()
+                return err('排序值必须是非负整数')
+            try:
+                sort_order = int(raw_sort_order)
+            except (TypeError, ValueError):
+                db.rollback()
+                return err('排序值必须是非负整数')
+            if str(raw_sort_order).strip() != str(sort_order) or sort_order < 0 or sort_order > 2147483647:
+                db.rollback()
+                return err('排序值必须是非负整数')
+
+        if student_number:
+            cur.execute(
+                "SELECT id FROM students WHERE student_number=%s AND id<>%s LIMIT 1",
+                (student_number, sid)
+            )
+            if cur.fetchone():
+                db.rollback()
+                return err('学号已存在')
+
+        old_student_number = student.get('student_number') or ''
+        cur.execute(
+            "SELECT id,username FROM student_accounts WHERE student_id=%s FOR UPDATE",
+            (sid,)
+        )
+        account = cur.fetchone()
+        account_username = account.get('username') if account else None
+        if account and student_number != old_student_number:
+            account_username = student_number or f'stu_{sid}'
+            cur.execute(
+                "SELECT id FROM student_accounts WHERE username=%s AND student_id<>%s LIMIT 1",
+                (account_username, sid)
+            )
+            if cur.fetchone():
+                db.rollback()
+                return err('该学号对应的登录账号已存在')
+
+        cur.execute(
+            "UPDATE students SET name=%s,student_number=%s,sort_order=%s "
+            "WHERE id=%s AND class_id=%s",
+            (name, student_number, sort_order, sid, class_id)
+        )
+        if account and student_number != old_student_number:
+            cur.execute(
+                "UPDATE student_accounts SET username=%s WHERE student_id=%s",
+                (account_username, sid)
+            )
+        db.commit()
+        return success({
+            'id': sid,
+            'name': name,
+            'student_number': student_number,
+            'sort_order': sort_order,
+            'account_username': account_username
+        })
+    except pymysql.err.IntegrityError:
+        db.rollback()
+        logger.warning('修改学生信息时发生唯一键冲突: class_id=%s, sid=%s', class_id, sid)
+        return err('学号或登录账号已存在')
+    except Exception:
+        db.rollback()
+        logger.exception('修改学生信息失败: class_id=%s, sid=%s', class_id, sid)
+        return err('修改学生信息失败', 500)
+    finally:
+        cur.close(); db.close()
+
 @app.route('/api/admin/students/<int:sid>', methods=['DELETE'])
 @admin_required
 def admin_delete_student(sid):

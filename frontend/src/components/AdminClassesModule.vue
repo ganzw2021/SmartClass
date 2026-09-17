@@ -121,6 +121,7 @@
                 <span v-else class="bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full text-xs font-bold">未建账号</span>
               </td>
               <td class="py-3 px-2">
+                <button @click="editStudent(s)" class="text-xs text-blue-500 hover:text-blue-700 hover:underline mr-2">修改</button>
                 <button v-if="s.account_id" @click="resetStudentPassword(s)" class="text-xs text-orange-500 hover:underline mr-2">重置密码</button>
                 <button @click="confirmDeleteStudent(s)" class="text-xs text-red-400 hover:text-red-600 hover:underline">删除</button>
               </td>
@@ -178,6 +179,31 @@
           <div class="flex gap-3 mt-6">
             <button @click="showAddStudentModal = false" class="flex-1 py-3 rounded-xl border-2 border-slate-100 text-slate-500 font-bold">取消</button>
             <button @click="saveNewStudent" class="flex-1 py-3 rounded-xl bg-green-600 text-white font-bold hover:bg-green-700 transition-colors">添加</button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <!-- 编辑学生弹窗 -->
+    <Teleport to="body">
+      <div v-if="showEditStudentModal" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" @click.self="closeStudentEdit">
+        <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
+          <h3 class="font-bold text-lg text-slate-800 mb-4">修改学生 - {{ selectedClass?.name }}</h3>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-xs font-bold text-slate-400 uppercase mb-1">姓名</label>
+              <input v-model="studentEditForm.name" type="text" placeholder="请输入学生姓名" class="w-full border-2 border-slate-100 p-3 rounded-xl outline-none text-slate-700 focus:border-blue-400" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-400 uppercase mb-1">学号（选填）</label>
+              <input v-model="studentEditForm.student_number" type="text" placeholder="请输入学号" class="w-full border-2 border-slate-100 p-3 rounded-xl outline-none text-slate-700 focus:border-blue-400" />
+            </div>
+          </div>
+          <div class="flex gap-3 mt-6">
+            <button @click="closeStudentEdit" :disabled="savingStudentEdit" class="flex-1 py-3 rounded-xl border-2 border-slate-100 text-slate-500 font-bold disabled:opacity-50">取消</button>
+            <button @click="saveStudentEdit" :disabled="savingStudentEdit" class="flex-1 py-3 rounded-xl bg-blue-600 text-white font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+              {{ savingStudentEdit ? '保存中...' : '保存' }}
+            </button>
           </div>
         </div>
       </div>
@@ -262,7 +288,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { getAdminClasses, createAdminClass, updateAdminClass, deleteAdminClass, addAdminClassStudent, deleteAdminStudent, createAdminStudentAccounts, resetAdminStudentPassword, addStudentsToClass } from '../api.js'
+import { getAdminClasses, createAdminClass, updateAdminClass, deleteAdminClass, addAdminClassStudent, updateAdminClassStudent, deleteAdminStudent, createAdminStudentAccounts, resetAdminStudentPassword, addStudentsToClass } from '../api.js'
 
 const classes = ref([])
 const loading = ref(true)
@@ -270,11 +296,14 @@ const selectedClass = ref(null)
 const showAddClassModal = ref(false)
 const showEditClassModal = ref(false)
 const showAddStudentModal = ref(false)
+const showEditStudentModal = ref(false)
 const showBatchImportModal = ref(false)
 const toast = ref('')
 
 const classForm = ref({ id: '', name: '', description: '' })
 const studentForm = ref({ name: '', student_number: '' })
+const studentEditForm = ref({ id: '', name: '', student_number: '' })
+const savingStudentEdit = ref(false)
 
 // 批量添加
 const batchText = ref('')
@@ -459,6 +488,42 @@ async function saveNewStudent() {
     showToast('学生添加成功')
   } catch (e) {
     showToast('添加失败')
+  }
+}
+
+function editStudent(student) {
+  studentEditForm.value = {
+    id: student.id,
+    name: student.name || '',
+    student_number: student.student_number || ''
+  }
+  showEditStudentModal.value = true
+}
+
+function closeStudentEdit() {
+  showEditStudentModal.value = false
+  studentEditForm.value = { id: '', name: '', student_number: '' }
+}
+
+async function saveStudentEdit() {
+  const name = studentEditForm.value.name.trim()
+  const studentNumber = studentEditForm.value.student_number.trim()
+  if (!name) return showToast('请输入学生姓名')
+  if (!selectedClass.value || !studentEditForm.value.id) return showToast('学生信息无效，请刷新后重试')
+
+  savingStudentEdit.value = true
+  try {
+    await updateAdminClassStudent(selectedClass.value.id, studentEditForm.value.id, {
+      name,
+      student_number: studentNumber
+    })
+    closeStudentEdit()
+    await loadClasses()
+    showToast('学生信息修改成功')
+  } catch (e) {
+    showToast(e.response?.data?.message || '修改失败')
+  } finally {
+    savingStudentEdit.value = false
   }
 }
 

@@ -45,7 +45,17 @@
 
     <div v-if="classId" class="bg-white rounded-2xl shadow-sm overflow-x-auto">
       <table class="w-full text-sm min-w-[940px]">
-        <thead class="bg-green-50"><tr><th class="p-4 text-left">排名</th><th class="p-4 text-left">学号</th><th class="p-4 text-left">姓名</th><th class="p-4">考勤分</th><th class="p-4">作业分</th><th class="p-4">课堂分</th><th class="p-4">总分</th><th class="p-4">操作</th></tr></thead>
+        <thead class="bg-green-50">
+          <tr>
+            <th v-for="column in sortableColumns" :key="column.key" class="p-4" :class="column.align === 'left' ? 'text-left' : 'text-center'" :aria-sort="ariaSort(column.key)">
+              <button type="button" class="inline-flex w-full items-center gap-1 hover:text-green-700" :class="column.align === 'left' ? 'justify-start' : 'justify-center'" @click="setSort(column.key)">
+                <span>{{ column.label }}</span>
+                <span class="inline-block w-3" aria-hidden="true">{{ sortIndicator(column.key) }}</span>
+              </button>
+            </th>
+            <th class="p-4">操作</th>
+          </tr>
+        </thead>
         <tbody>
           <tr v-for="r in filteredRows" :key="r.student_id" class="border-t">
             <td class="p-4 font-bold">{{ r.rank }}</td>
@@ -93,13 +103,60 @@ const showLogs = ref(false)
 const selectedLogStudent = ref(null)
 const logs = ref([])
 const statusMessage = ref('')
+const sortKey = ref('student_number')
+const sortDirection = ref('asc')
+const numericSortKeys = new Set(['rank', 'attendance_score', 'homework_score', 'classroom_score', 'total_score'])
+const descendingByDefault = new Set(['attendance_score', 'homework_score', 'classroom_score', 'total_score'])
+const sortableColumns = [
+  { key: 'rank', label: '排名', align: 'left' },
+  { key: 'student_number', label: '学号', align: 'left' },
+  { key: 'student_name', label: '姓名', align: 'left' },
+  { key: 'attendance_score', label: '考勤分', align: 'center' },
+  { key: 'homework_score', label: '作业分', align: 'center' },
+  { key: 'classroom_score', label: '课堂分', align: 'center' },
+  { key: 'total_score', label: '总分', align: 'center' }
+]
 
 const selectedCourse = computed(() => props.courses.find(c => String(c.id) === String(courseId.value)))
 const courseClasses = computed(() => selectedCourse.value?.classes || props.classes.filter(c => (c.course_ids || []).map(String).includes(String(courseId.value))))
 const filteredRows = computed(() => {
   const q = searchQuery.value.toLowerCase()
-  return rows.value.filter(r => !q || String(r.student_number || '').toLowerCase().includes(q) || String(r.student_name || '').toLowerCase().includes(q))
+  const result = rows.value.filter(r => !q || String(r.student_number || '').toLowerCase().includes(q) || String(r.student_name || '').toLowerCase().includes(q))
+
+  return [...result].sort((a, b) => {
+    const key = sortKey.value
+    const aValue = a[key]
+    const bValue = b[key]
+    const aEmpty = aValue === null || aValue === undefined || aValue === ''
+    const bEmpty = bValue === null || bValue === undefined || bValue === ''
+    if (aEmpty !== bEmpty) return aEmpty ? 1 : -1
+    if (aEmpty) return 0
+
+    const comparison = numericSortKeys.has(key)
+      ? Number(aValue) - Number(bValue)
+      : String(aValue).localeCompare(String(bValue), 'zh-CN', { numeric: true, sensitivity: 'base' })
+    return sortDirection.value === 'asc' ? comparison : -comparison
+  })
 })
+
+function setSort(key) {
+  if (sortKey.value === key) {
+    sortDirection.value = sortDirection.value === 'asc' ? 'desc' : 'asc'
+    return
+  }
+  sortKey.value = key
+  sortDirection.value = descendingByDefault.has(key) ? 'desc' : 'asc'
+}
+
+function sortIndicator(key) {
+  if (sortKey.value !== key) return ''
+  return sortDirection.value === 'asc' ? '↑' : '↓'
+}
+
+function ariaSort(key) {
+  if (sortKey.value !== key) return 'none'
+  return sortDirection.value === 'asc' ? 'ascending' : 'descending'
+}
 
 function onCourseChange() {
   editingStudentId.value = null

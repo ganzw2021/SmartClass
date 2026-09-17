@@ -466,6 +466,9 @@ export async function getAdminClassStudents(classId) {
 export async function addAdminClassStudent(classId, data) {
   return await api.post(`/admin/classes/${classId}/students`, data)
 }
+export async function updateAdminClassStudent(classId, studentId, data) {
+  return await api.put(`/admin/classes/${classId}/students/${studentId}`, data)
+}
 export async function deleteAdminStudent(id) {
   return await api.delete(`/admin/students/${id}`)
 }
