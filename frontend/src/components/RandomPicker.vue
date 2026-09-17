@@ -1,419 +1,279 @@
 <template>
-  <div class="flex flex-col items-center py-6 min-h-[600px]">
-    <!-- 标题 -->
-    <h2 class="text-2xl font-black text-emerald-800 mb-6 flex items-center gap-3">
-      <span class="text-3xl">🌿</span>
-      悬 壶 问 诊
-      <span class="text-3xl">🌿</span>
+  <section class="lucky-picker flex flex-col items-center py-6 min-h-[600px]">
+    <h2 class="text-2xl font-black text-emerald-800 flex items-center gap-3">
+      <span aria-hidden="true">✦</span> 幸运签 <span aria-hidden="true">✦</span>
     </h2>
-
-    <div class="flex flex-col lg:flex-row items-center gap-16 w-full max-w-5xl">
-      <!-- 左侧：葫芦（药葫芦）区域 -->
+    <p class="mt-2 mb-6 text-sm text-emerald-700/70">摇一摇签筒，看看今天的幸运同学</p>
+    <div class="picker-layout">
       <div class="flex flex-col items-center">
-        <!-- 葫芦 -->
-        <div 
-          class="relative cursor-pointer"
-          :class="{ 'animate-gourd-shake': isShaking }"
-        >
-          <!-- 葫芦主体 -->
-          <svg width="180" height="220" viewBox="0 0 180 220" class="drop-shadow-xl">
-            <!-- 葫芦藤 -->
-            <path d="M90 10 Q95 5 100 8 Q105 12 102 18 Q98 22 90 20 Q82 22 78 18 Q75 12 80 8 Q85 5 90 10" fill="#5D4037"/>
-            <path d="M90 20 L88 30" stroke="#8D6E63" stroke-width="3" stroke-linecap="round"/>
-            
-            <!-- 葫芦上半部分 -->
-            <ellipse cx="90" cy="75" rx="55" ry="50" fill="url(#gourdGradient)"/>
-            
-            <!-- 葫芦下半部分 -->
-            <ellipse cx="90" cy="150" rx="70" ry="60" fill="url(#gourdGradient2)"/>
-            
-            <!-- 葫芦嘴 -->
-            <ellipse cx="90" cy="108" rx="20" ry="8" fill="#6D4C41"/>
-            
-            <!-- 葫芦纹理 -->
-            <path d="M50 70 Q90 60 130 70" stroke="#5D4037" stroke-width="1" fill="none" opacity="0.3"/>
-            <path d="M40 100 Q90 90 140 100" stroke="#5D4037" stroke-width="1" fill="none" opacity="0.3"/>
-            <path d="M30 140 Q90 125 150 140" stroke="#5D4037" stroke-width="1" fill="none" opacity="0.3"/>
-            <path d="M35 170 Q90 160 145 170" stroke="#5D4037" stroke-width="1" fill="none" opacity="0.3"/>
-            
-            <!-- 药方符号 -->
-            <text x="90" y="78" text-anchor="middle" font-size="32" fill="#4E342E" font-family="serif">药</text>
-            
-            <!-- 装饰图案 -->
-            <circle cx="50" cy="60" r="8" fill="none" stroke="#8D6E63" stroke-width="1" opacity="0.5"/>
-            <circle cx="130" cy="60" r="8" fill="none" stroke="#8D6E63" stroke-width="1" opacity="0.5"/>
-            <circle cx="35" cy="130" r="6" fill="none" stroke="#8D6E63" stroke-width="1" opacity="0.5"/>
-            <circle cx="145" cy="130" r="6" fill="none" stroke="#8D6E63" stroke-width="1" opacity="0.5"/>
-            
-            <!-- 葫芦高光 -->
-            <ellipse cx="60" cy="70" rx="15" ry="20" fill="white" opacity="0.15"/>
-            <ellipse cx="55" cy="140" rx="20" ry="25" fill="white" opacity="0.15"/>
-            
-            <!-- 渐变定义 -->
-            <defs>
-              <linearGradient id="gourdGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" style="stop-color:#8D6E63"/>
-                <stop offset="50%" style="stop-color:#A1887F"/>
-                <stop offset="100%" style="stop-color:#6D4C41"/>
-              </linearGradient>
-              <linearGradient id="gourdGradient2" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" style="stop-color:#8D6E63"/>
-                <stop offset="50%" style="stop-color:#A1887F"/>
-                <stop offset="100%" style="stop-color:#6D4C41"/>
-              </linearGradient>
-            </defs>
-          </svg>
+        <div class="draw-scene" aria-hidden="true">
+          <div class="tube-shadow"></div>
+          <div class="tube-group" :class="{ 'is-shaking': phase === 'shaking' }" @animationend="onShakeEnd">
+            <svg class="stick-bundle" width="240" height="270" viewBox="0 0 240 270">
+              <ellipse cx="120" cy="104" rx="69" ry="20" fill="#794723"/>
+              <ellipse cx="120" cy="101" rx="59" ry="13" fill="#432e20"/>
+              <g class="inner-sticks">
+                <rect v-for="(stick, index) in sticks" :key="index" :x="stick.x" :y="stick.y" width="12" height="106" rx="3"
+                  :fill="`url(#${artId}-stick)`" :transform="`rotate(${stick.angle} ${stick.x + 6} 107)`"/>
+              </g>
+            </svg>
+            <div v-if="phase === 'drawing' || phase === 'revealed'" class="drawn-stick"
+              :class="{ 'is-drawing': phase === 'drawing', 'is-drawn': phase === 'revealed' }"
+              @animationend="onDrawEnd"><span>幸运签</span><i>✦</i></div>
+            <svg class="bamboo-tube" width="240" height="270" viewBox="0 0 240 270">
+              <defs>
+                <linearGradient :id="`${artId}-bamboo`" x1="0" y1="0" x2="1" y2="0">
+                  <stop offset="0" stop-color="#97602d"/><stop offset=".3" stop-color="#d5a65b"/>
+                  <stop offset=".55" stop-color="#e8c780"/><stop offset="1" stop-color="#98612f"/>
+                </linearGradient>
+                <linearGradient :id="`${artId}-stick`" x1="0" y1="0" x2="1" y2="0">
+                  <stop stop-color="#d4ab65"/><stop offset=".5" stop-color="#ffebae"/><stop offset="1" stop-color="#c89b50"/>
+                </linearGradient>
+              </defs>
+              <path d="M51 104 Q120 136 189 104 L183 242 Q120 270 57 242 Z" :fill="`url(#${artId}-bamboo)`"/>
+              <g stroke="#83572f" stroke-width="1.3" opacity=".3">
+                <path d="M72 116 L76 249 M94 121 L96 254 M120 124 L120 258 M146 121 L144 254 M168 116 L164 249"/>
+              </g>
+              <path d="M52 107 Q120 139 188 107" fill="none" stroke="#f3d291" stroke-width="7"/>
+              <path d="M55 126 Q120 153 185 126 M57 230 Q120 258 183 230" fill="none" stroke="#76512e" stroke-width="5"/>
+              <rect x="94" y="151" width="52" height="66" rx="9" fill="#17634e" stroke="#f1d592" stroke-width="2"/>
+              <text x="120" y="178" text-anchor="middle" fill="#fff1c0" font-size="19" font-family="serif">幸</text>
+              <text x="120" y="203" text-anchor="middle" fill="#fff1c0" font-size="19" font-family="serif">运</text>
+              <path d="M65 144 L69 215" stroke="#fff3c3" stroke-width="5" stroke-linecap="round" opacity=".25"/>
+            </svg>
+          </div>
         </div>
-
-        <!-- 求签按钮 -->
-        <button 
-          @click="doRandom" 
-          :disabled="!selectedClass || !students.length || isShaking || isDropping"
-          class="mt-6 px-12 py-4 bg-gradient-to-r from-emerald-700 via-emerald-600 to-emerald-700 hover:from-emerald-600 hover:to-emerald-600 disabled:from-gray-400 disabled:to-gray-500 text-white rounded-full text-lg font-black shadow-xl transition-all active:scale-95 disabled:cursor-not-allowed"
-        >
-          {{ isShaking ? '摇药中...' : isDropping ? '落药...' : '求 药 问 诊' }}
+        <label for="lucky-class" class="mb-2 text-sm font-bold text-emerald-800">抽签班级</label>
+        <select id="lucky-class" v-model="selectedClass" :disabled="isBusy"
+          class="w-56 border-2 border-emerald-300 p-3 rounded-xl outline-none font-bold text-center bg-emerald-50 focus:border-emerald-600 text-emerald-900 disabled:opacity-60">
+          <option value="">选择班级</option>
+          <option v-for="c in classes" :key="c.id" :value="c.id">{{ c.name }}</option>
+        </select>
+        <button @click="doRandom" :disabled="!students.length || isBusy" :aria-busy="isBusy"
+          class="mt-5 px-10 py-3 bg-gradient-to-r from-emerald-700 to-emerald-600 hover:from-emerald-600 hover:to-emerald-500 disabled:from-gray-400 disabled:to-gray-400 text-white rounded-full text-lg font-black shadow-lg transition-transform active:scale-95 disabled:cursor-not-allowed">
+          {{ phase === 'shaking' ? '摇签中…' : phase === 'drawing' ? '幸运签出筒…' : showResult ? '再摇一签' : '摇一摇 · 抽幸运签' }}
         </button>
-
-        <!-- 班级选择 -->
-        <div class="mt-6 w-48">
-          <select v-model="selectedClass" class="w-full border-2 border-emerald-400 p-3 rounded-xl outline-none font-bold text-center bg-emerald-50 focus:border-emerald-600 transition-colors text-emerald-900">
-            <option value="">选择班级</option>
-            <option v-for="c in classes" :key="c.id" :value="c.id">{{ c.name }}</option>
-          </select>
-        </div>
+        <p class="mt-3 text-sm text-emerald-700/70 min-h-[20px]" role="status">{{ statusText }}</p>
       </div>
-
-      <!-- 右侧：药方展示区域 -->
-      <div class="flex-1 flex flex-col items-center justify-center min-h-[450px]">
-        <!-- 空状态 -->
-        <div v-if="!showResult && !isShaking && !isDropping" class="text-center">
-          <div class="text-7xl mb-4 opacity-30">🍃</div>
-          <p class="text-emerald-700/60 text-lg">悬壶济世，医者仁心</p>
+      <div class="result-stage" :aria-busy="isBusy">
+        <div v-if="!showResult" class="text-center text-emerald-700/60">
+          <div class="text-6xl mb-5 text-emerald-300" aria-hidden="true">✦</div>
+          <p class="text-lg font-bold">{{ isBusy ? '好运正在酝酿' : '每一份努力，都值得被看见' }}</p>
+          <p class="mt-2 text-sm">{{ isBusy ? '幸运同学即将揭晓' : '选好班级，摇出今天的幸运签' }}</p>
         </div>
-
-        <!-- 药签掉落动画 -->
-        <div v-if="isDropping" class="relative">
-          <div 
-            class="transition-all duration-700"
-            :style="dropStyle"
-          >
-            <!-- 竹简/药方签 -->
-            <div class="bg-gradient-to-b from-amber-100 to-amber-200 rounded-lg shadow-lg overflow-hidden" style="width: 140px; height: 200px;">
-              <!-- 签头 -->
-              <div class="bg-gradient-to-b from-emerald-700 to-emerald-800 h-10 flex items-center justify-center">
-                <span class="text-yellow-300 text-sm font-bold">药签</span>
+        <article v-else-if="selectedStudent" class="result-card" aria-label="幸运签结果">
+          <div class="bg-gradient-to-r from-emerald-800 to-emerald-600 px-6 py-4 text-center">
+            <p class="text-emerald-100 text-xs tracking-[.3em]">今日好运</p>
+            <h3 class="text-white text-xl font-black tracking-widest mt-1">幸运签</h3>
+          </div>
+          <div class="p-5">
+            <div class="flex flex-col items-center gap-3 mb-4">
+              <div class="w-14 h-14 rounded-full bg-emerald-100 border-4 border-white shadow flex items-center justify-center overflow-hidden">
+                <img v-if="selectedStudent.avatar" :src="selectedStudent.avatar" class="w-full h-full object-cover" alt="幸运同学头像"/>
+                <svg v-else xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                </svg>
               </div>
-              <!-- 签身 -->
-              <div class="p-3 flex-1">
-                <div class="text-emerald-800 text-xs text-center mb-2">上上签</div>
-                <div class="h-px bg-emerald-400/30 my-2"></div>
+              <div class="text-center">
+                <p class="text-emerald-600 text-xs mb-1">幸运同学</p>
+                <p class="student-name text-emerald-900 font-black text-2xl">{{ selectedStudent.name }}</p>
               </div>
+            </div>
+            <div class="flex items-center gap-3 my-4 text-emerald-500" aria-hidden="true">
+              <div class="flex-1 h-px bg-emerald-200"></div>✦<div class="flex-1 h-px bg-emerald-200"></div>
+            </div>
+            <div class="bg-white/70 rounded-xl p-4 border border-emerald-100">
+              <p class="text-xs font-bold text-emerald-600 mb-2">幸运寄语</p>
+              <p class="text-emerald-900 text-sm leading-relaxed break-words">{{ selectedStudent.signature }}</p>
+              <div class="herb-slot mt-4 pt-3 border-t border-dashed border-emerald-200">
+                <p class="text-xs font-bold text-emerald-600 mb-2">本签药材 · 课堂小知识</p>
+                <template v-if="selectedHerb">
+                  <div class="flex flex-wrap items-baseline gap-2">
+                    <span class="text-emerald-900 font-black text-lg">{{ selectedHerb.name }}</span>
+                    <span class="text-emerald-600 text-xs">{{ selectedHerb.category }}</span>
+                  </div>
+                  <p class="mt-2 text-sm text-emerald-700 leading-relaxed break-words"><span class="font-bold">功效：</span>{{ selectedHerb.efficacy }}</p>
+                </template>
+                <p v-else class="text-emerald-600 text-sm" role="status">药材小知识加载中…</p>
+              </div>
+            </div>
+            <div class="flex justify-between gap-3 mt-4 text-xs text-emerald-700/70">
+              <span class="break-words">{{ currentClass?.name }}</span><time class="shrink-0">{{ drawDate }}</time>
             </div>
           </div>
-        </div>
-
-        <!-- 抽中的药方展示 -->
-        <div 
-          v-if="showResult && selectedStudent"
-          class="animate-prescription-appear"
-        >
-          <!-- 光芒 -->
-          <div class="absolute -inset-10 bg-gradient-to-r from-emerald-200 via-green-100 to-emerald-200 rounded-lg blur-2xl opacity-40 animate-pulse"></div>
-          
-          <!-- 药方/处方笺 -->
-          <div class="relative bg-gradient-to-b from-amber-50 to-amber-100 rounded-lg shadow-2xl overflow-hidden" style="width: 340px;">
-            <!-- 药方顶栏 -->
-            <div class="bg-gradient-to-r from-emerald-700 to-emerald-600 px-6 py-4 text-center">
-              <div class="flex items-center justify-center gap-3">
-                <span class="text-emerald-300">🌿</span>
-                <span class="text-white text-xl font-black tracking-wider">处 方 笺</span>
-                <span class="text-emerald-300">🌿</span>
-              </div>
-            </div>
-            
-            <!-- 药方内容 -->
-            <div class="p-5">
-              <!-- 学生信息 -->
-              <div class="text-center mb-4">
-                <div class="inline-block border-2 border-emerald-600 rounded-lg px-4 py-2 bg-emerald-50">
-                  <span class="text-emerald-800 font-black text-lg">{{ selectedStudent.name }}</span>
-                </div>
-              </div>
-              
-              <!-- 分隔线 -->
-              <div class="flex items-center gap-2 my-3">
-                <div class="flex-1 h-px bg-emerald-400"></div>
-                <span class="text-emerald-500">◆</span>
-                <div class="flex-1 h-px bg-emerald-400"></div>
-              </div>
-              
-              <!-- 药方核心内容区 -->
-              <div class="bg-white/60 rounded-lg p-4 border border-emerald-200 mb-4">
-                <!-- 诊断 -->
-                <div class="flex items-start gap-2 mb-3">
-                  <span class="text-emerald-700 font-bold text-sm">诊断：</span>
-                  <span class="text-emerald-800 text-sm flex-1">学业精进，才华横溢</span>
-                </div>
-                
-                <!-- 中药处方 -->
-                <div class="border-t border-dashed border-emerald-300 pt-3 mb-3">
-                  <div class="flex items-center gap-2 mb-2">
-                    <span class="text-emerald-700 font-bold text-sm">处方：</span>
-                  </div>
-                  <!-- 中药名称 -->
-                  <div v-if="selectedHerb" class="bg-emerald-50 rounded-lg p-3 border border-emerald-200">
-                    <div class="flex items-center justify-between">
-                      <div class="flex items-center gap-2">
-                        <span class="text-2xl">🌿</span>
-                        <div>
-                          <div class="text-emerald-800 font-black text-lg">{{ selectedHerb.name }}</div>
-                          <div class="text-emerald-600 text-xs">{{ selectedHerb.category }}</div>
-                        </div>
-                      </div>
-                    </div>
-                    <div class="mt-2 pt-2 border-t border-emerald-100">
-                      <div class="text-emerald-700 text-sm">
-                        <span class="font-bold">功效：</span>
-                        <span class="text-emerald-600">{{ selectedHerb.efficacy }}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <!-- 加载中 -->
-                  <div v-else class="text-center py-4 text-emerald-500 text-sm">
-                    正在配药...
-                  </div>
-                </div>
-                
-                <!-- 医嘱/签名 -->
-                <div class="flex items-start gap-2">
-                  <span class="text-emerald-700 font-bold text-sm">医嘱：</span>
-                  <span class="text-emerald-800 text-sm flex-1 leading-relaxed italic">
-                    "{{ selectedStudent.signature }}"
-                  </span>
-                </div>
-              </div>
-              
-              <!-- 医师签名区 -->
-              <div class="border-t border-dashed border-emerald-300 pt-3">
-                <div class="flex justify-between items-center">
-                  <div>
-                    <div class="text-emerald-600 text-xs">主治医师</div>
-                    <div class="text-emerald-800 font-serif text-lg">悬壶先生</div>
-                  </div>
-                  <div class="text-right">
-                    <div class="text-emerald-600 text-xs">处方日期</div>
-                    <div class="text-emerald-800 text-sm">{{ currentDate }}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <!-- 头像 -->
-            <div class="flex justify-center -mt-2">
-              <div class="w-14 h-14 rounded-full bg-gradient-to-br from-emerald-200 to-emerald-300 p-1 shadow-md">
-                <div class="w-full h-full rounded-full bg-white flex items-center justify-center overflow-hidden">
-                  <svg v-if="!selectedStudent.avatar" xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
-                  <img v-else :src="selectedStudent.avatar" class="w-full h-full object-cover" alt="头像" />
-                </div>
-              </div>
-            </div>
-            
-            <!-- 装饰图案 -->
-            <div class="flex justify-center gap-2 mt-3 pb-4">
-              <span class="text-emerald-400">🍃</span>
-              <span class="text-emerald-500">◆</span>
-              <span class="text-emerald-400">🍃</span>
-            </div>
-            
-            <!-- 药方底栏 -->
-            <div class="bg-emerald-800 px-4 py-2 text-center">
-              <span class="text-emerald-200 text-xs">济世堂 · 悬壶问诊</span>
-            </div>
-          </div>
-        </div>
+          <div class="bg-emerald-800 px-4 py-2 text-center text-emerald-100 text-xs">保持好奇，下一份幸运就是你</div>
+        </article>
       </div>
     </div>
-  </div>
+  </section>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-
-const props = defineProps({
-  classes: { type: Array, default: () => [] }
-})
-
-// 后端地址
-const BACKEND_BASE = import.meta.env.VITE_BACKEND_BASE || 'http://localhost:5000'
-
+import { ref, computed, watch, onBeforeUnmount, getCurrentInstance } from 'vue'
+const props = defineProps({ classes: { type: Array, default: () => [] } })
+const BACKEND_BASE = (import.meta.env.VITE_BACKEND_BASE || '').replace(/\/$/, '')
+const artId = `lucky-tube-${getCurrentInstance().uid}`
 const selectedClass = ref('')
 const selectedStudent = ref(null)
-const selectedHerb = ref(null)  // 选中的中药
-const isShaking = ref(false)
-const isDropping = ref(false)
-const showResult = ref(false)
-
-// 掉落动画的 top 值
-const dropTop = ref(-80)
-
-const dropStyle = computed(() => ({
-  top: `${dropTop.value}px`,
-  transition: isDropping.value ? 'top 0.7s cubic-bezier(0.25, 0.46, 0.45, 0.94)' : 'none'
-}))
-
-// 当前日期
-const currentDate = computed(() => {
-  const now = new Date()
-  return `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')}`
+const selectedHerb = ref(null)
+const drawDate = ref('')
+const phase = ref('idle')
+const isBusy = computed(() => phase.value === 'shaking' || phase.value === 'drawing')
+const showResult = computed(() => phase.value === 'revealed')
+const currentClass = computed(() => props.classes.find(c => c.id === selectedClass.value))
+const students = computed(() => currentClass.value?.students || [])
+const statusText = computed(() => {
+  if (!currentClass.value) return '请先选择班级'
+  if (!students.value.length) return '该班级暂无学生名册'
+  if (phase.value === 'shaking') return '签筒摇动中，请稍候'
+  if (phase.value === 'drawing') return '幸运签正在出筒'
+  if (showResult.value) return `抽中了 ${selectedStudent.value.name}`
+  return `共 ${students.value.length} 位同学参与抽签`
 })
-
-// 个性签名库（中医药风格）
-const signaturePool = [
-  '勤求古训，博采众方',
-  '上医治未病，中医治欲病',
-  '医者仁心，悬壶济世',
-  '阴阳平衡，气血调和',
-  '药到病除，妙手回春',
-  '望闻问切，四诊合参',
-  '君臣佐使，配伍精当',
-  '道地药材，疗效显著',
-  '标本兼治，固本培元',
-  '扶正祛邪，调和阴阳',
-  '春生夏长，秋收冬藏',
-  '正气存内，邪不可干',
-  '疏通经络，调和气血',
-  '清热解毒，凉血消肿',
-  '补中益气，固本培元',
-  '活血化瘀，通络止痛',
-  '养心安神，益智开窍',
-  '健脾和胃，升清降浊',
-  '疏肝解郁，理气和中',
-  '滋阴润燥，养血生津'
+const sticks = [
+  { x: 76, y: 38, angle: -16 }, { x: 92, y: 23, angle: -9 },
+  { x: 108, y: 30, angle: -3 }, { x: 123, y: 18, angle: 5 },
+  { x: 138, y: 29, angle: 12 }, { x: 151, y: 42, angle: 18 }
 ]
+const signaturePool = [
+  '心有所向，学有所成。', '保持好奇，每一次思考都在靠近答案。',
+  '认真积累，终会迎来属于你的高光时刻。', '大胆表达，你的想法值得被听见。',
+  '今天再进步一点，好运就离你更近一点。', '勤求古训，博采众方。'
+]
+const backupHerbs = [
+  { name: '人参', category: '补气药', efficacy: '大补元气，复脉固脱，补脾益肺，生津养血' },
+  { name: '黄芪', category: '补气药', efficacy: '补气升阳，固表止汗，利水消肿，生津养血' },
+  { name: '当归', category: '补血药', efficacy: '补血活血，调经止痛，润肠通便' },
+  { name: '枸杞子', category: '补阴药', efficacy: '滋补肝肾，益精明目' },
+  { name: '金银花', category: '清热药', efficacy: '清热解毒，疏散风热' },
+  { name: '甘草', category: '补气药', efficacy: '补脾益气，清热解毒，祛痰止咳，缓急止痛' }
+]
+const pick = items => items[Math.floor(Math.random() * items.length)]
+let phaseTimer
+let requestController
+let drawVersion = 0
 
-const currentClass = computed(() => {
-  return props.classes.find(c => c.id === selectedClass.value)
-})
-
-const students = computed(() => {
-  if (!currentClass.value) return []
-  return currentClass.value.students || []
-})
-
-function getRandomSignature() {
-  return signaturePool[Math.floor(Math.random() * signaturePool.length)]
+function armPhaseFallback(callback, duration) {
+  clearTimeout(phaseTimer)
+  // 动画结束事件为主；后台标签页等情况下由兜底计时器收尾。
+  phaseTimer = setTimeout(callback, duration + 160)
+}
+function finishShaking() {
+  if (phase.value !== 'shaking') return
+  phase.value = 'drawing'
+  armPhaseFallback(finishDrawing, 760)
+}
+function finishDrawing() {
+  if (phase.value !== 'drawing') return
+  clearTimeout(phaseTimer)
+  phase.value = 'revealed'
+}
+function onShakeEnd(event) {
+  if (event.target === event.currentTarget && event.animationName.startsWith('tube-shake')) finishShaking()
+}
+function onDrawEnd(event) {
+  if (event.target === event.currentTarget && event.animationName.startsWith('stick-draw')) finishDrawing()
 }
 
-// 获取随机中药
-async function fetchRandomHerb() {
+async function fetchRandomHerb(version) {
+  const controller = new AbortController()
+  requestController = controller
+  const timeout = setTimeout(() => controller.abort(), 4500)
+  let herb = pick(backupHerbs)
   try {
-    const res = await fetch(`${BACKEND_BASE}/api/herb/random`)
+    const res = await fetch(`${BACKEND_BASE}/api/herb/random`, { signal: controller.signal })
+    if (!res.ok) throw new Error('药材接口请求失败')
     const data = await res.json()
-    if (data.success && data.data) {
-      selectedHerb.value = data.data
-    }
-  } catch (e) {
-    console.error('获取中药失败', e)
-    // 备用本地中药库
-    const backupHerbs = [
-      { name: '人参', category: '补气药', efficacy: '大补元气，复脉固脱，补脾益肺，生津养血' },
-      { name: '黄芪', category: '补气药', efficacy: '补气升阳，固表止汗，利水消肿，生津养血' },
-      { name: '当归', category: '补血药', efficacy: '补血活血，调经止痛，润肠通便' },
-      { name: '枸杞子', category: '补阴药', efficacy: '滋补肝肾，益精明目' },
-      { name: '金银花', category: '清热药', efficacy: '清热解毒，疏散风热' },
-      { name: '甘草', category: '补气药', efficacy: '补脾益气，清热解毒，祛痰止咳，缓急止痛' },
-    ]
-    selectedHerb.value = backupHerbs[Math.floor(Math.random() * backupHerbs.length)]
+    if (data.success && data.data?.name) herb = data.data
+  } catch {
+    // 失败、超时和无效响应均使用本地药材，抽签动画不等待网络。
+  } finally {
+    clearTimeout(timeout)
+    if (requestController === controller) requestController = undefined
   }
+  if (version === drawVersion) selectedHerb.value = herb
 }
-
 function doRandom() {
-  if (!students.value.length) {
-    alert('该班级无学生名册')
-    return
+  if (isBusy.value || !students.value.length) return
+  requestController?.abort()
+  const version = ++drawVersion
+  const student = pick(students.value)
+  selectedStudent.value = {
+    name: student.name || student,
+    avatar: student.avatar || null,
+    signature: student.signature || pick(signaturePool)
   }
-  
-  // 重置状态
-  showResult.value = false
+  selectedHerb.value = null
+  drawDate.value = new Date().toLocaleDateString('zh-CN').replaceAll('/', '.')
+  phase.value = 'shaking'
+  // 与摇筒并行获取药材，避免接口延迟打断出签。
+  void fetchRandomHerb(version)
+  armPhaseFallback(finishShaking, 1440)
+}
+function resetDraw() {
+  ++drawVersion
+  clearTimeout(phaseTimer)
+  requestController?.abort()
+  phase.value = 'idle'
   selectedStudent.value = null
   selectedHerb.value = null
-  
-  // 开始摇晃
-  isShaking.value = true
-  
-  // 摇晃动画（2秒），不显示任何名字
-  setTimeout(async () => {
-    isShaking.value = false
-    
-    // 选中一个学生
-    const finalStudent = students.value[Math.floor(Math.random() * students.value.length)]
-    selectedStudent.value = {
-      name: finalStudent.name || finalStudent,
-      avatar: finalStudent.avatar || null,
-      signature: finalStudent.signature || getRandomSignature()
-    }
-    
-    // 同时获取随机中药
-    await fetchRandomHerb()
-    
-    // 开始掉落动画
-    isDropping.value = true
-    dropTop.value = -100
-    
-    // 触发掉落
-    setTimeout(() => {
-      dropTop.value = 60
-    }, 50)
-    
-    // 掉落完成后放大展示
-    setTimeout(() => {
-      isDropping.value = false
-      showResult.value = true
-    }, 800)
-    
-  }, 2000)
 }
+watch(selectedClass, resetDraw)
+watch(currentClass, value => { if (!value) resetDraw() })
+onBeforeUnmount(resetDraw)
 </script>
 
 <style scoped>
-/* 葫芦摇晃动画 */
-@keyframes gourd-shake {
-  0%, 100% { transform: translateX(0) rotate(0deg); }
-  10% { transform: translateX(-12px) rotate(-8deg); }
-  20% { transform: translateX(12px) rotate(8deg); }
-  30% { transform: translateX(-10px) rotate(-6deg); }
-  40% { transform: translateX(10px) rotate(6deg); }
-  50% { transform: translateX(-8px) rotate(-5deg); }
-  60% { transform: translateX(8px) rotate(5deg); }
-  70% { transform: translateX(-6px) rotate(-4deg); }
-  80% { transform: translateX(6px) rotate(4deg); }
-  90% { transform: translateX(-3px) rotate(-2deg); }
+.lucky-picker { width: 100%; }
+.picker-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); align-items: center; gap: 48px; width: 100%; max-width: 920px; }
+.draw-scene { position: relative; width: 300px; height: 320px; }
+.tube-group { position: absolute; left: 30px; top: 30px; width: 240px; height: 270px; transform-origin: 50% 85%; }
+.bamboo-tube { position: relative; z-index: 2; }
+.stick-bundle { position: absolute; inset: 0; z-index: 0; }
+.tube-shadow { position: absolute; bottom: 13px; left: 64px; width: 172px; height: 18px; border-radius: 50%; background: radial-gradient(ellipse, #30534130, transparent 70%); }
+.drawn-stick { position: absolute; z-index: 1; left: 105px; top: 66px; width: 30px; height: 126px; border: 1px solid #c99b52; border-radius: 5px; background: linear-gradient(90deg, #d4ab65, #ffedb7 50%, #d4ab65); box-shadow: 0 2px 5px #65432122; transform-origin: 50% 90%; }
+.drawn-stick span { display: block; margin: 9px auto 0; writing-mode: vertical-rl; font: bold 15px serif; letter-spacing: 4px; color: #175c49; }
+.drawn-stick i { display: block; text-align: center; font-style: normal; color: #a66129; margin-top: 8px; }
+.is-shaking { animation: tube-shake 1440ms ease-in-out both; will-change: transform; }
+.is-shaking .inner-sticks { animation: sticks-rattle 180ms ease-in-out 8; transform-origin: 120px 105px; }
+.is-drawing { animation: stick-draw 760ms cubic-bezier(.22, .68, .25, 1) both; will-change: transform, opacity; }
+.is-drawn { transform: translate3d(0, -52px, 0) rotate(10deg); }
+.result-stage { display: flex; justify-content: center; align-items: center; min-height: 500px; min-width: 0; }
+.result-card { position: relative; width: 340px; max-width: 100%; border-radius: 16px; overflow: hidden; background: linear-gradient(#fffcf2, #f9efd6); border: 1px solid #e5d6b4; box-shadow: 0 16px 40px #174e3420; animation: result-reveal 360ms cubic-bezier(.2, .65, .3, 1) both; }
+.student-name { overflow-wrap: anywhere; }
+.herb-slot { min-height: 115px; }
+@keyframes tube-shake {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(0); }
+  10% { transform: translate3d(-7px, -2px, 0) rotate(-8deg); }
+  22% { transform: translate3d(7px, -4px, 0) rotate(8deg); }
+  34% { transform: translate3d(-8px, -3px, 0) rotate(-9deg); }
+  46% { transform: translate3d(8px, -5px, 0) rotate(9deg); }
+  58% { transform: translate3d(-7px, -3px, 0) rotate(-8deg); }
+  70% { transform: translate3d(6px, -2px, 0) rotate(7deg); }
+  82% { transform: translate3d(-4px, -1px, 0) rotate(-4deg); }
+  92% { transform: translate3d(2px, 0, 0) rotate(2deg); }
 }
-
-.animate-gourd-shake {
-  animation: gourd-shake 0.5s ease-in-out infinite;
-  transform-origin: top center;
+@keyframes sticks-rattle {
+  0%, 100% { transform: translateY(0) rotate(-1deg); }
+  50% { transform: translateY(-4px) rotate(1deg); }
 }
-
-/* 药方出现动画 */
-@keyframes prescription-appear {
-  0% {
-    opacity: 0;
-    transform: scale(0.3) translateY(-30px);
-  }
-  60% {
-    opacity: 1;
-    transform: scale(1.03) translateY(5px);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
+@keyframes stick-draw {
+  0% { transform: translate3d(0, 65px, 0) rotate(0); opacity: 0; }
+  14% { opacity: 1; }
+  72% { transform: translate3d(0, -58px, 0) rotate(12deg); }
+  100% { transform: translate3d(0, -52px, 0) rotate(10deg); opacity: 1; }
 }
-
-.animate-prescription-appear {
-  animation: prescription-appear 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+@keyframes result-reveal {
+  from { opacity: 0; transform: translate3d(0, 12px, 0) scale(.98); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+@media (max-width: 760px) {
+  .picker-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; }
+  .result-stage { width: 100%; min-height: 480px; padding: 0 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .is-shaking { animation-duration: 80ms; }
+  .is-shaking .inner-sticks { animation: none; }
+  .is-drawing, .result-card { animation-duration: 80ms; }
 }
 </style>
