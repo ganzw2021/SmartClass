@@ -10,8 +10,9 @@
       </h3>
 
       <!-- 二维码显示区域 -->
-      <div :class="[
-        'w-full aspect-square max-w-[380px] mx-auto mb-4 rounded-2xl overflow-hidden flex items-center justify-center relative transition-all',
+      <button type="button" ref="qrTrigger" @click="openExpandedQR" :disabled="!isAttending || !qrDataUrl"
+        aria-label="放大签到二维码" aria-haspopup="dialog" :aria-expanded="isQRExpanded" :class="[
+        'attendance-qr-trigger w-full aspect-square max-w-[380px] mx-auto mb-4 rounded-2xl overflow-hidden flex items-center justify-center relative transition-all',
         isAttending
           ? 'bg-white border-4 border-green-500 shadow-lg'
           : 'bg-slate-100 border-4 border-dashed border-slate-300'
@@ -37,7 +38,9 @@
           </svg>
           <span class="text-sm mt-2">刷新失败，请检查网络</span>
         </div>
-      </div>
+      </button>
+
+      <p v-if="isAttending && qrDataUrl" class="text-sm text-green-700 mb-4">点击二维码可全屏放大</p>
 
       <!-- 签到统计 -->
       <div v-if="isAttending" class="w-full max-w-[300px] mb-4 p-4 bg-green-50 rounded-xl">
@@ -84,10 +87,10 @@
       <div class="flex justify-between items-center mb-6">
         <div class="flex items-center gap-3">
           <h3 class="font-bold text-slate-700 text-lg">待签到学生</h3>
-          <span v-if="unattendedCount > 0" class="bg-red-100 text-red-600 px-4 py-1.5 rounded-full text-lg font-black">
-            {{ unattendedCount }}
+          <span v-if="unattendCount > 0" class="bg-red-100 text-red-600 px-4 py-1.5 rounded-full text-lg font-black">
+            {{ unattendCount }}
           </span>
-          <span v-else-if="isAttending && allStudents.length > 0 && unattendedCount === 0" class="bg-green-100 text-green-600 px-4 py-1.5 rounded-full text-lg font-black">
+          <span v-else-if="isAttending && allStudents.length > 0 && unattendCount === 0" class="bg-green-100 text-green-600 px-4 py-1.5 rounded-full text-lg font-black">
             
           </span>
         </div>
@@ -142,10 +145,25 @@
       </div>
     </div>
   </div>
+<Teleport to="body">
+    <div v-if="isQRExpanded" class="attendance-qr-overlay" role="dialog" aria-modal="true"
+      aria-labelledby="attendance-expanded-title" @keydown.esc.prevent.stop="closeExpandedQR"
+      @keydown.tab.prevent="qrCloseButton?.focus()">
+      <h2 id="attendance-expanded-title" class="attendance-expanded-title">签到二维码</h2>
+      <img :src="qrDataUrl" class="attendance-expanded-image" alt="放大的签到二维码" />
+      <p class="attendance-expanded-count" role="status" aria-live="polite" aria-atomic="true">
+        <span>班级人数 <strong>{{ allStudents.length }}</strong></span>
+        <span aria-hidden="true">/</span>
+        <span>未签到人数 <strong class="attendance-unsigned">{{ unattendCount }}</strong></span>
+      </p>
+      <button type="button" ref="qrCloseButton" class="attendance-expanded-close" @click="closeExpandedQR"
+        aria-label="关闭放大二维码" title="关闭放大二维码（Esc）">×</button>
+    </div>
+  </Teleport>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import QRCode from 'qrcode'
 import { startAttendance, refreshQRCodeUrl, getCurrentSession, resetAttendance, saveAttendanceReport, getClassStudents, manualSign } from '../api.js'
 
@@ -165,6 +183,28 @@ const selectedClass = ref('')
 const isAttending = ref(false)
 const classStudents = ref([])
 const showSigned = ref(false)
+const isQRExpanded = ref(false)
+const qrTrigger = ref(null)
+const qrCloseButton = ref(null)
+let previousBodyOverflow = ''
+
+async function openExpandedQR() {
+  if (!isAttending.value || !qrDataUrl.value || isQRExpanded.value) return
+  previousBodyOverflow = document.body.style.overflow
+  document.body.style.overflow = 'hidden'
+  isQRExpanded.value = true
+  await nextTick()
+  qrCloseButton.value?.focus()
+}
+
+function closeExpandedQR(restoreFocus = true) {
+  if (!isQRExpanded.value) return
+  isQRExpanded.value = false
+  document.body.style.overflow = previousBodyOverflow
+  if (restoreFocus) qrTrigger.value?.focus()
+}
+
+watch(isAttending, active => { if (!active) closeExpandedQR() })
 
 // 签到相关状态
 const currentSessionKey = ref('')
@@ -252,7 +292,7 @@ async function generateQRCodeImage(token) {
     const url = `${window.location.origin}/sign?cid=${selectedCourse.value}&clid=${selectedClass.value}&t=${Date.now()}&token=${token}`
     // 使用低纠错级别 + 充足白色边框，让二维码更简单、更容易扫描
     const dataUrl = await QRCode.toDataURL(url, {
-      width: 360,                  // 固定尺寸（显示区域限制）
+      width: 1200,                  // 同一张高分辨率二维码供普通视图与全屏视图使用
       margin: 2,                   // 白色边框增加扫描识别率
       errorCorrectionLevel: 'L',   // 低纠错 = 二维码更简单
       color: {
@@ -419,8 +459,39 @@ async function toggleAttendance() {
 }
 
 onUnmounted(() => {
+  closeExpandedQR(false)
   if (isAttending.value) stopSign()
   clearInterval(qrRefreshTimer); qrRefreshTimer = null
   clearInterval(syncTimer); syncTimer = null
 })
 </script>
+
+<style scoped>
+.attendance-qr-trigger { padding: 0; cursor: zoom-in; }
+.attendance-qr-trigger:disabled { cursor: default; }
+.attendance-qr-trigger:focus-visible { outline: 3px solid #15803d; outline-offset: 4px; }
+.attendance-qr-overlay {
+  position: fixed; inset: 0; z-index: 10000; box-sizing: border-box;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 16px; padding: 20px; overflow-y: auto; background: #f8fafc;
+}
+.attendance-expanded-title { margin: 0; color: #14532d; font-size: 24px; font-weight: 800; }
+.attendance-expanded-image {
+  display: block; width: min(80vw, calc(100dvh - 220px), 1000px);
+  height: min(80vw, calc(100dvh - 220px), 1000px); flex-shrink: 0;
+  object-fit: contain; background: white; border-radius: 12px;
+}
+.attendance-expanded-count { display: flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: 12px; margin: 0; color: #334155; font-size: clamp(16px, 2.5vw, 26px); }
+.attendance-expanded-count strong { color: #15803d; font-size: 1.3em; font-variant-numeric: tabular-nums; }
+.attendance-expanded-count .attendance-unsigned { color: #dc2626; }
+.attendance-expanded-close { display: grid; place-items: center; flex-shrink: 0; width: 52px; height: 52px; padding: 0; border: 1px solid #cbd5e1; border-radius: 50%; background: white; color: #334155; font-size: 36px; line-height: 1; cursor: pointer; }
+.attendance-expanded-close:hover { background: #e2e8f0; }
+.attendance-expanded-close:focus-visible { outline: 3px solid #15803d; outline-offset: 4px; }
+@media (max-height: 480px) {
+  .attendance-qr-overlay { gap: 8px; padding: 8px; }
+  .attendance-expanded-title { font-size: 18px; }
+  .attendance-expanded-image { width: min(75vw, calc(100dvh - 150px)); height: min(75vw, calc(100dvh - 150px)); }
+  .attendance-expanded-count { font-size: 16px; }
+  .attendance-expanded-close { width: 40px; height: 40px; font-size: 30px; }
+}
+</style>
