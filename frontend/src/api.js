@@ -472,6 +472,9 @@ export async function updateAdminClassStudent(classId, studentId, data) {
 export async function deleteAdminStudent(id) {
   return await api.delete(`/admin/students/${id}`)
 }
+export async function removeAdminClassMember(classId, studentId) {
+  return await api.delete(`/admin/classes/${classId}/members/${studentId}`)
+}
 export async function createAdminStudentAccounts(classId, defaultPassword) {
   return await api.post('/admin/students/create_accounts', { class_id: classId, default_password: defaultPassword || '123456' })
 }

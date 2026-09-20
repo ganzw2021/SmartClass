@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS classes (
     id VARCHAR(50) PRIMARY KEY COMMENT '班级ID',
     name VARCHAR(100) NOT NULL COMMENT '班级名称',
     description VARCHAR(255) DEFAULT '' COMMENT '班级描述',
+    class_type VARCHAR(20) NOT NULL DEFAULT 'administrative' COMMENT 'administrative=行政班, teaching=教学班',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB COMMENT='班级表';
@@ -37,6 +38,18 @@ CREATE TABLE IF NOT EXISTS students (
     UNIQUE KEY uk_class_name (class_id, name),
     INDEX idx_student_number (student_number)
 ) ENGINE=InnoDB COMMENT='学生表';
+
+-- 班级成员关系：一个学生保留一个行政班，同时可加入多个教学班
+CREATE TABLE IF NOT EXISTS class_students (
+    class_id VARCHAR(50) NOT NULL,
+    student_id INT NOT NULL,
+    sort_order INT DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (class_id, student_id),
+    INDEX idx_class_students_student (student_id),
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='班级成员关联表';
 
 -- 课程表（V2: 教师创建课程，通过course_classes关联班级）
 CREATE TABLE IF NOT EXISTS courses (

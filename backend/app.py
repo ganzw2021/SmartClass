@@ -83,6 +83,13 @@ def _ser(v):
 def _row(r): return None if r is None else {k:_ser(v) for k,v in r.items()}
 def _rows(r): return [_row(x) for x in r] if r else []
 
+def _class_students(cur, class_id, fields='s.id,s.name,s.student_number,s.sort_order'):
+    """Return the canonical student records linked to an administrative or teaching class."""
+    cur.execute(f"""SELECT {fields} FROM class_students csm
+                    JOIN students s ON s.id=csm.student_id
+                    WHERE csm.class_id=%s ORDER BY csm.sort_order,s.sort_order,s.name""", (class_id,))
+    return cur.fetchall()
+
 def success(data=None, msg='success'):
     return jsonify({'code':200,'success':True,'data':data,'message':msg})
 def fail(msg='error'):
@@ -226,7 +233,7 @@ def get_all_classes():
     db=get_db(); cur=db.cursor()
     cur.execute("""
         SELECT c.id, c.name,
-               (SELECT COUNT(*) FROM students s WHERE s.class_id=c.id) AS student_count
+               (SELECT COUNT(*) FROM class_students csm WHERE csm.class_id=c.id) AS student_count
         FROM classes c
         ORDER BY c.name
     """)
@@ -236,8 +243,7 @@ def get_all_classes():
 @teacher_required
 def get_class_students(class_id):
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT id,name,student_number,sort_order FROM students WHERE class_id=%s ORDER BY sort_order,name",(class_id,))
-    rows=cur.fetchall(); db.close(); return success(_rows(rows))
+    rows=_class_students(cur,class_id); db.close(); return success(_rows(rows))
 
 # ======= 课程管理 =======
 @app.route('/api/courses', methods=['GET'])
@@ -272,7 +278,7 @@ def get_courses():
     for c in courses:
         cur.execute("""
             SELECT c.id, c.name,
-                   (SELECT COUNT(*) FROM students s WHERE s.class_id=c.id) AS student_count
+                   (SELECT COUNT(*) FROM class_students csm WHERE csm.class_id=c.id) AS student_count
             FROM classes c JOIN course_classes cc ON cc.class_id=c.id
             WHERE cc.course_id=%s
         """, (c['id'],))
@@ -412,8 +418,8 @@ def get_points_board():
              COALESCE(ps.classroom_score,0) AS classroom_score,
              COALESCE(ps.homework_adjustment,0) AS homework_adjustment,
              COALESCE(hr.total_score,0) AS ladder_score
-      FROM students s
-      LEFT JOIN point_scores ps ON ps.course_id=%s AND ps.class_id=s.class_id AND ps.student_id=s.id
+      FROM class_students csm JOIN students s ON s.id=csm.student_id
+      LEFT JOIN point_scores ps ON ps.course_id=%s AND ps.class_id=csm.class_id AND ps.student_id=s.id
       LEFT JOIN (
         SELECT latest.student_id, SUM(latest.score) AS total_score
         FROM (
@@ -426,7 +432,7 @@ def get_points_board():
         WHERE latest.rn=1
         GROUP BY latest.student_id
       ) hr ON hr.student_id=s.id
-      WHERE s.class_id=%s ORDER BY s.name''', (course_id, course_id, clid, clid))
+      WHERE csm.class_id=%s ORDER BY s.name''', (course_id, course_id, clid, clid))
     rows=[]
     for r in cur.fetchall():
         base=(float(r.get('ladder_score') or 0)/hw_count*0.2) if hw_count else 0.0
@@ -448,7 +454,7 @@ def adjust_points():
     if not _teacher_owns_course_class(course_id, clid, request.teacher_id):
         return err('无权操作此课程或班级', 403)
     db=get_db(); cur=db.cursor()
-    cur.execute('SELECT id,name FROM students WHERE id=%s AND class_id=%s',(sid,clid)); stu=cur.fetchone()
+    cur.execute('SELECT s.id,s.name FROM class_students csm JOIN students s ON s.id=csm.student_id WHERE s.id=%s AND csm.class_id=%s',(sid,clid)); stu=cur.fetchone()
     if not stu: db.close(); return err(' ',404)
     cur.execute('''INSERT INTO point_scores (course_id,class_id,student_id,attendance_score,classroom_score,homework_adjustment)
       VALUES (%s,%s,%s,20,0,0) ON DUPLICATE KEY UPDATE student_id=VALUES(student_id)''',(course_id,clid,sid))
@@ -985,8 +991,7 @@ def att_deduction():
     db_chk.close()
     
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT id,name FROM students WHERE class_id=%s",(clid,))
-    students=cur.fetchall()
+    students=_class_students(cur,clid,'s.id,s.name')
     cur.execute("SELECT student_name FROM attendance_records WHERE course_id=%s AND class_id=%s",(cid,clid))
     signed=set(r['student_name'] for r in cur.fetchall())
     
@@ -1027,14 +1032,14 @@ def att_save_report():
                 SELECT s.id, s.name, s.student_number,
                        ar.sign_time,
                        (ar.student_name IS NOT NULL) AS is_signed
-                FROM students s
+                FROM class_students csm JOIN students s ON s.id=csm.student_id
                 LEFT JOIN (
                     SELECT student_name, MAX(sign_time) AS sign_time
                     FROM attendance_records
                     WHERE course_id=%s AND class_id=%s AND session_key LIKE %s
                     GROUP BY student_name
                 ) ar ON ar.student_name=s.name
-                WHERE s.class_id=%s
+                WHERE csm.class_id=%s
                 ORDER BY s.name
             """, (cid, clid, session_key + '%', clid))
         else:
@@ -1043,14 +1048,14 @@ def att_save_report():
                 SELECT s.id, s.name, s.student_number,
                        ar.sign_time,
                        (ar.student_name IS NOT NULL) AS is_signed
-                FROM students s
+                FROM class_students csm JOIN students s ON s.id=csm.student_id
                 LEFT JOIN (
                     SELECT student_name, MAX(sign_time) AS sign_time
                     FROM attendance_records
                     WHERE course_id=%s AND class_id=%s
                     GROUP BY student_name
                 ) ar ON ar.student_name=s.name
-                WHERE s.class_id=%s
+                WHERE csm.class_id=%s
                 ORDER BY s.name
             """, (cid, clid, clid))
         rows=cur.fetchall()
@@ -1376,7 +1381,7 @@ def get_student_resources():
     term=request.args.get('term','')
     db=get_db(); cur=db.cursor()
     # 获取学生可选的课程
-    cur.execute("SELECT DISTINCT c.id,c.name,c.term FROM courses c JOIN course_classes cc ON cc.course_id=c.id JOIN students s ON s.class_id=cc.class_id WHERE s.id=%s",(request.teacher_id,))
+    cur.execute("SELECT DISTINCT c.id,c.name,c.term FROM courses c JOIN course_classes cc ON cc.course_id=c.id JOIN class_students csm ON csm.class_id=cc.class_id WHERE csm.student_id=%s",(request.teacher_id,))
     courses=cur.fetchall()
     if not courses: return success([])
     course_ids=[str(c['id']) for c in courses]
@@ -1400,7 +1405,7 @@ def student_download_resource(rid):
     """学生端下载课程资源"""
     db=get_db(); cur=db.cursor()
     # 获取学生可选的课程
-    cur.execute("SELECT DISTINCT c.id FROM courses c JOIN course_classes cc ON cc.course_id=c.id JOIN students s ON s.class_id=cc.class_id WHERE s.id=%s",(request.teacher_id,))
+    cur.execute("SELECT DISTINCT c.id FROM courses c JOIN course_classes cc ON cc.course_id=c.id JOIN class_students csm ON csm.class_id=cc.class_id WHERE csm.student_id=%s",(request.teacher_id,))
     courses=cur.fetchall()
     if not courses:
         db.close(); return err('无权限访问',403)
@@ -1425,8 +1430,7 @@ def get_hw_submissions(hid):
     if not hw: db.close(); return err('作业不存在',404)
     clid=str(hw['class_id']) if hw['class_id'] else ''
     if clid:
-        cur.execute("SELECT id,name FROM students WHERE class_id=%s ORDER BY name",(clid,))
-        students={str(r['id']):r['name'] for r in cur.fetchall()}
+        students={str(r['id']):r['name'] for r in _class_students(cur,clid,'s.id,s.name')}
         total=len(students)
     else: students={}; total=0
     cur.execute("SELECT * FROM homework_submissions WHERE homework_id=%s ORDER BY submitted_at",(hid,))
@@ -1536,7 +1540,7 @@ def get_hw_ranking():
         SELECT s.id as student_id, s.name as student_name, s.class_id,
                COALESCE(SUM(hs2.score), 0) as total_score,
                COUNT(DISTINCT hs2.homework_id) as homework_count
-        FROM students s
+        FROM class_students csm JOIN students s ON s.id=csm.student_id
         LEFT JOIN (
             SELECT hs.homework_id, hs.student_id, hs.score,
                    ROW_NUMBER() OVER (PARTITION BY hs.student_id, hs.homework_id ORDER BY hs.submitted_at DESC) as rn
@@ -1544,7 +1548,7 @@ def get_hw_ranking():
             JOIN homework h ON h.id = hs.homework_id
             WHERE h.course_id = %s AND h.class_id = %s AND hs.score IS NOT NULL
         ) hs2 ON hs2.student_id = s.id AND hs2.rn = 1
-        WHERE s.class_id = %s
+        WHERE csm.class_id = %s
         GROUP BY s.id, s.name, s.class_id
         ORDER BY total_score DESC, s.id ASC
     """, (str(course_id), str(class_id), str(class_id)))
@@ -2268,8 +2272,7 @@ def _create_homework_notifications(hw_id, course_id, class_id, title, deadline):
     cur = db.cursor()
     
     # 获取班级所有学生
-    cur.execute("SELECT id FROM students WHERE class_id=%s", (class_id,))
-    students = cur.fetchall()
+    students = _class_students(cur, class_id, 's.id')
     
     for stu in students:
         cur.execute("""
@@ -2290,7 +2293,7 @@ def _check_deadline_reminders(student_id):
         SELECT h.id, h.title, h.deadline, c.name as course_name
         FROM homework h
         JOIN courses c ON c.id = h.course_id
-        WHERE h.class_id = (SELECT class_id FROM students WHERE id=%s)
+        WHERE EXISTS (SELECT 1 FROM class_students csm WHERE csm.class_id=h.class_id AND csm.student_id=%s)
         AND h.deadline BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 24 HOUR)
         AND h.is_published = 1
         AND NOT EXISTS (
@@ -2361,22 +2364,21 @@ def stu_change_password():
 @student_required
 def stu_homework():
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT class_id FROM students WHERE id=%s",(request.teacher_id,))
-    row=cur.fetchone()
-    if not row: db.close(); return err('未找到班级信息',404)
-    clid=str(row['class_id'])
     cur.execute("""
         SELECT h.*,c.name as course_name FROM homework h
         JOIN courses c ON c.id=h.course_id
         WHERE (
-            h.class_id=%s
+            (h.class_id IS NOT NULL AND EXISTS (
+                SELECT 1 FROM class_students csm WHERE csm.class_id=h.class_id AND csm.student_id=%s
+            ))
             OR (h.class_id IS NULL AND EXISTS (
-                SELECT 1 FROM course_classes cc WHERE cc.course_id=c.id AND cc.class_id=%s
+                SELECT 1 FROM course_classes cc JOIN class_students csm ON csm.class_id=cc.class_id
+                WHERE cc.course_id=c.id AND csm.student_id=%s
             ))
         )
         AND h.is_published=1
         ORDER BY h.deadline DESC
-    """, (clid, clid))
+    """, (request.teacher_id, request.teacher_id))
     hws=_rows(cur.fetchall())
     for hw in hws:
         cur.execute("SELECT * FROM homework_attachments WHERE homework_id=%s",(hw['id'],))
@@ -2407,18 +2409,15 @@ def stu_homework():
 def stu_courses():
     db=get_db(); cur=db.cursor()
     term_filter = request.args.get('term','')
-    cur.execute("SELECT class_id FROM students WHERE id=%s",(request.teacher_id,))
-    row=cur.fetchone()
-    if not row: db.close(); return err('未找到班级信息',404)
-    clid=str(row['class_id'])
     # 获取所有学期（用于前端筛选下拉）
     cur.execute("""
         SELECT DISTINCT c.term
         FROM courses c
         JOIN course_classes cc ON cc.course_id=c.id
-        WHERE cc.class_id=%s AND c.term IS NOT NULL AND c.term != ''
+        JOIN class_students csm ON csm.class_id=cc.class_id
+        WHERE csm.student_id=%s AND c.term IS NOT NULL AND c.term != ''
         ORDER BY c.term DESC
-    """, (clid,))
+    """, (request.teacher_id,))
     terms = [r['term'] for r in cur.fetchall()]
     # 查询课程（含教师名、班级名、学期）
     if term_filter:
@@ -2430,9 +2429,10 @@ def stu_courses():
             JOIN course_classes cc ON cc.course_id=c.id
             JOIN classes cl ON cl.id=cc.class_id
             JOIN teachers t ON t.id=c.teacher_id
-            WHERE cc.class_id=%s AND c.term=%s
+            JOIN class_students csm ON csm.class_id=cc.class_id
+            WHERE csm.student_id=%s AND c.term=%s
             ORDER BY c.term DESC, c.name
-        """, (clid, term_filter))
+        """, (request.teacher_id, term_filter))
     else:
         cur.execute("""
             SELECT DISTINCT c.id, c.name, c.term,
@@ -2442,9 +2442,10 @@ def stu_courses():
             JOIN course_classes cc ON cc.course_id=c.id
             JOIN classes cl ON cl.id=cc.class_id
             JOIN teachers t ON t.id=c.teacher_id
-            WHERE cc.class_id=%s
+            JOIN class_students csm ON csm.class_id=cc.class_id
+            WHERE csm.student_id=%s
             ORDER BY c.term DESC, c.name
-        """, (clid,))
+        """, (request.teacher_id,))
     courses=_rows(cur.fetchall())
     db.close(); return success({'courses': courses, 'terms': terms})
 
@@ -2457,6 +2458,9 @@ def stu_submit_homework(hid):
     else:
         content=(request.get_json() or {}).get('content','')
     db=get_db(); cur=db.cursor()
+    cur.execute("""SELECT 1 FROM homework h JOIN class_students csm ON csm.class_id=h.class_id
+                   WHERE h.id=%s AND h.is_published=1 AND csm.student_id=%s LIMIT 1""",(hid,request.teacher_id))
+    if not cur.fetchone(): db.close(); return err('无权提交该教学班作业',403)
     cur.execute("SELECT name FROM students WHERE id=%s",(request.teacher_id,))
     stu=cur.fetchone()
     stu_name=stu['name'] if stu else ''
@@ -2512,8 +2516,10 @@ def stu_hw_ranking():
     db = get_db()
     cur = db.cursor()
 
-    # 获取学生班级
-    cur.execute("SELECT class_id FROM students WHERE id=%s", (request.teacher_id,))
+    # 按学生在该课程中的实际班级（含教学班）确定榜单。
+    cur.execute("""SELECT cc.class_id FROM course_classes cc
+                   JOIN class_students csm ON csm.class_id=cc.class_id
+                   WHERE cc.course_id=%s AND csm.student_id=%s LIMIT 1""", (course_id, request.teacher_id))
     row = cur.fetchone()
     if not row:
         db.close()
@@ -2521,7 +2527,7 @@ def stu_hw_ranking():
     clid = str(row['class_id'])
 
     # 获取班级总人数
-    cur.execute("SELECT COUNT(*) as cnt FROM students WHERE class_id=%s", (clid,))
+    cur.execute("SELECT COUNT(*) as cnt FROM class_students WHERE class_id=%s", (clid,))
     total = cur.fetchone()['cnt']
 
     # 按课程统计该班学生的作业分数
@@ -2529,7 +2535,7 @@ def stu_hw_ranking():
         SELECT s.id as student_id, s.name as student_name,
                COALESCE(SUM(hs2.score), 0) as total_score,
                COUNT(DISTINCT hs2.homework_id) as homework_count
-        FROM students s
+        FROM class_students csm JOIN students s ON s.id=csm.student_id
         LEFT JOIN (
             SELECT hs.homework_id, hs.student_id, hs.score,
                    ROW_NUMBER() OVER (PARTITION BY hs.student_id, hs.homework_id ORDER BY hs.submitted_at DESC) as rn
@@ -2537,7 +2543,7 @@ def stu_hw_ranking():
             JOIN homework h ON h.id = hs.homework_id
             WHERE h.course_id = %s AND h.class_id = %s AND hs.score IS NOT NULL
         ) hs2 ON hs2.student_id = s.id AND hs2.rn = 1
-        WHERE s.class_id = %s
+        WHERE csm.class_id = %s
         GROUP BY s.id, s.name
         ORDER BY total_score DESC, s.id ASC
     """, (str(course_id), clid, clid))
@@ -2595,8 +2601,8 @@ def admin_dashboard():
     cur.execute("SELECT COUNT(*) as v FROM attendance_reports"); att_total=cur.fetchone()['v']
     # 各班级学生数
     cur.execute("""
-        SELECT cl.name, COUNT(s.id) cnt
-        FROM classes cl LEFT JOIN students s ON s.class_id=cl.id
+        SELECT cl.name, COUNT(csm.student_id) cnt
+        FROM classes cl LEFT JOIN class_students csm ON csm.class_id=cl.id
         GROUP BY cl.id ORDER BY cnt DESC
     """)
     class_students = [{'name': r['name'], 'count': r['cnt']} for r in cur.fetchall()]
@@ -2777,7 +2783,7 @@ def admin_homework_stats():
     wclause = " AND ".join(where)
     sql1 = ("SELECT h.id, h.title, h.class_id, cl.name class_name,"
             " COUNT(hs.id) sub_cnt,"
-            " (SELECT COUNT(*) FROM students WHERE class_id=h.class_id) total_stu,"
+            " (SELECT COUNT(*) FROM class_students WHERE class_id=h.class_id) total_stu,"
             " AVG(CASE WHEN hs.score IS NOT NULL THEN hs.score ELSE NULL END) avg_score,"
             " MAX(hs.score) max_score, MIN(hs.score) min_score,"
             " SUM(CASE WHEN hs.score>=90 THEN 1 ELSE 0 END) excellent,"
@@ -2809,7 +2815,7 @@ def admin_homework_stats():
     # 班级提交率
     sql2 = ("SELECT cl.id, cl.name,"
             " SUM((SELECT COUNT(*) FROM homework_submissions WHERE homework_id=h.id)) sub_cnt,"
-            " SUM((SELECT COUNT(*) FROM students WHERE class_id=h.class_id)) total_stu"
+            " SUM((SELECT COUNT(*) FROM class_students WHERE class_id=h.class_id)) total_stu"
             " FROM homework h"
             " LEFT JOIN classes cl ON cl.id=h.class_id"
             " WHERE " + wclause +
@@ -2988,15 +2994,16 @@ def admin_get_classes():
     classes_data = []
     for row in rows:
         cls = _row(row)
-        cur.execute("SELECT COUNT(*) as cnt FROM students WHERE class_id=%s", (cls['id'],))
+        cur.execute("SELECT COUNT(*) as cnt FROM class_students WHERE class_id=%s", (cls['id'],))
         cls['student_count'] = cur.fetchone()['cnt']
         cur.execute("""
             SELECT s.id, s.name, s.student_number, s.sort_order,
                    sa.id as account_id, sa.username as account_username
-            FROM students s
+            FROM class_students csm
+            JOIN students s ON s.id=csm.student_id
             LEFT JOIN student_accounts sa ON sa.student_id=s.id
-            WHERE s.class_id=%s
-            ORDER BY s.sort_order, s.name
+            WHERE csm.class_id=%s
+            ORDER BY csm.sort_order, s.sort_order, s.name
         """, (cls['id'],))
         students = cur.fetchall()
         cls['students'] = [_row(s) for s in students]
@@ -3010,11 +3017,12 @@ def admin_get_classes():
 def admin_create_class():
     d=request.get_json() or {}
     name=(d.get('name') or '').strip()
-    desc=d.get('description','')
+    desc=d.get('description',''); class_type=d.get('class_type','administrative')
     if not name: return err('班级名称不能为空')
+    if class_type not in ('administrative','teaching'): return err('班级类型无效')
     cid=str(uuid.uuid4())[:8].upper()
     db=get_db(); cur=db.cursor()
-    cur.execute("INSERT INTO classes (id,name,description) VALUES (%s,%s,%s)",(cid,name,desc))
+    cur.execute("INSERT INTO classes (id,name,description,class_type) VALUES (%s,%s,%s,%s)",(cid,name,desc,class_type))
     db.close(); return success({'id':cid})
 
 @app.route('/api/admin/classes/<class_id>', methods=['PUT'])
@@ -3030,7 +3038,11 @@ def admin_update_class(class_id):
 @admin_required
 def admin_delete_class(class_id):
     db=get_db(); cur=db.cursor()
-    cur.execute("DELETE FROM students WHERE class_id=%s",(class_id,))
+    cur.execute("SELECT class_type FROM classes WHERE id=%s",(class_id,)); cls=cur.fetchone()
+    if not cls: db.close(); return err('班级不存在',404)
+    if cls.get('class_type') == 'administrative':
+        cur.execute("SELECT COUNT(*) cnt FROM students WHERE class_id=%s",(class_id,))
+        if cur.fetchone()['cnt']: db.close(); return err('行政班仍有学生，请先转移或删除学生')
     cur.execute("DELETE FROM course_classes WHERE class_id=%s",(class_id,))
     cur.execute("DELETE FROM classes WHERE id=%s",(class_id,))
     db.close(); return success()
@@ -3039,61 +3051,71 @@ def admin_delete_class(class_id):
 @admin_required
 def admin_get_class_students(class_id):
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT s.*,sa.username as account_username,sa.id as account_id FROM students s LEFT JOIN student_accounts sa ON sa.student_id=s.id WHERE s.class_id=%s ORDER BY s.sort_order,s.name",(class_id,))
+    cur.execute("""SELECT s.*,sa.username as account_username,sa.id as account_id,
+                          home.name AS administrative_class_name
+                   FROM class_students csm JOIN students s ON s.id=csm.student_id
+                   LEFT JOIN student_accounts sa ON sa.student_id=s.id
+                   LEFT JOIN classes home ON home.id=s.class_id
+                   WHERE csm.class_id=%s ORDER BY csm.sort_order,s.sort_order,s.name""",(class_id,))
     rows=cur.fetchall(); db.close(); return success(_rows(rows))
 
 @app.route('/api/admin/classes/<class_id>/students', methods=['POST'])
 @admin_required
 def admin_add_class_student(class_id):
     d = request.get_json() or {}
-    students = d.get('students', [])
-    # 兼容旧格式（单个学生）
-    if not students:
-        name = (d.get('name') or '').strip()
-        student_number = d.get('student_number', '') or ''
-        if not name:
-            return err('姓名不能为空')
-        db = get_db()
-        cur = db.cursor()
-        cur.execute("SELECT MAX(sort_order) as max_so FROM students WHERE class_id=%s", (class_id,))
-        max_so = (cur.fetchone() or {}).get('max_so') or 0
-        cur.execute(
-            "INSERT INTO students (name,student_number,class_id,sort_order) VALUES (%s,%s,%s,%s)",
-            (name, student_number, class_id, max_so + 1)
-        )
-        sid = cur.lastrowid
-        db.close()
-        return success({'id': sid, 'name': name, 'student_number': student_number})
-
-    # 批量添加
-    db = get_db()
-    cur = db.cursor()
-    cur.execute("SELECT MAX(sort_order) as max_so FROM students WHERE class_id=%s", (class_id,))
-    max_so = (cur.fetchone() or {}).get('max_so') or 0
-
-    added = []
-    skipped = []
-    for i, s in enumerate(students):
+    items = d.get('students') or [d]
+    db=get_db(); cur=db.cursor()
+    cur.execute("SELECT class_type FROM classes WHERE id=%s",(class_id,)); cls=cur.fetchone()
+    if not cls: db.close(); return err('班级不存在',404)
+    teaching=cls.get('class_type') == 'teaching'
+    cur.execute("SELECT COALESCE(MAX(sort_order),0) max_so FROM class_students WHERE class_id=%s",(class_id,))
+    max_so=cur.fetchone()['max_so']; added=[]; skipped=[]
+    for i, s in enumerate(items):
         name = (s.get('name') or s.get('姓名') or '').strip()
-        student_number = s.get('student_number') or s.get('学号') or ''
+        student_number = str(s.get('student_number') or s.get('学号') or '').strip()
         if not name:
             skipped.append({'index': i + 1, 'reason': '姓名为空'})
             continue
-        # 检查学号是否重复（如果提供了学号）
         if student_number:
-            cur.execute("SELECT id FROM students WHERE student_number=%s", (student_number,))
-            if cur.fetchone():
-                skipped.append({'index': i + 1, 'name': name, 'student_number': student_number, 'reason': '学号已存在'})
+            cur.execute("SELECT id,name,student_number FROM students WHERE student_number=%s LIMIT 1",(student_number,))
+            existing=cur.fetchone()
+            if existing and teaching:
+                if existing['name'] != name:
+                    skipped.append({'index':i+1,'name':name,'student_number':student_number,'reason':f"姓名不符（系统中为{existing['name']}）"})
+                    continue
+                cur.execute("INSERT IGNORE INTO class_students (class_id,student_id,sort_order) VALUES (%s,%s,%s)",(class_id,existing['id'],max_so+1+len(added)))
+                if cur.rowcount: added.append(_row(existing))
+                else: skipped.append({'index':i+1,'name':name,'student_number':student_number,'reason':'已在教学班中'})
                 continue
+            if existing:
+                skipped.append({'index':i+1,'name':name,'student_number':student_number,'reason':'学号已存在'})
+                continue
+        if teaching:
+            skipped.append({'index':i+1,'name':name,'student_number':student_number,'reason':'未找到已有学号'})
+            continue
         cur.execute(
             "INSERT INTO students (name,student_number,class_id,sort_order) VALUES (%s,%s,%s,%s)",
             (name, student_number, class_id, max_so + 1 + len(added))
         )
         sid = cur.lastrowid
+        cur.execute("INSERT INTO class_students (class_id,student_id,sort_order) VALUES (%s,%s,%s)",(class_id,sid,max_so+1+len(added)))
         added.append({'id': sid, 'name': name, 'student_number': student_number})
-
     db.close()
+    if len(items)==1 and not d.get('students'):
+        if added: return success(added[0])
+        return err(skipped[0]['reason'] if skipped else '添加失败')
     return success({'added': len(added), 'skipped': len(skipped), 'students': added, 'skipped_details': skipped})
+
+@app.route('/api/admin/classes/<class_id>/members/<int:sid>', methods=['DELETE'])
+@admin_required
+def admin_remove_class_member(class_id, sid):
+    db=get_db(); cur=db.cursor()
+    cur.execute("SELECT class_type FROM classes WHERE id=%s",(class_id,)); cls=cur.fetchone()
+    if not cls: db.close(); return err('班级不存在',404)
+    if cls.get('class_type') != 'teaching': db.close(); return err('行政班学生请使用删除学生功能')
+    cur.execute("DELETE FROM class_students WHERE class_id=%s AND student_id=%s",(class_id,sid))
+    removed = bool(cur.rowcount)
+    db.close(); return success({'removed':removed})
 
 @app.route('/api/admin/classes/<class_id>/students/<int:sid>', methods=['PUT', 'PATCH'])
 @admin_required
@@ -3230,7 +3252,8 @@ def admin_create_student_accounts():
     d=request.get_json() or {}; clid=str(d.get('class_id','')); def_pw=d.get('default_password','123456')
     if not clid: return err('class_id 不能为空')
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT id,name,student_number FROM students WHERE class_id=%s AND id NOT IN (SELECT student_id FROM student_accounts)",(clid,))
+    cur.execute("""SELECT s.id,s.name,s.student_number FROM class_students csm JOIN students s ON s.id=csm.student_id
+                   WHERE csm.class_id=%s AND s.id NOT IN (SELECT student_id FROM student_accounts)""",(clid,))
     students=cur.fetchall()
     created=0; skipped=0
     for s in students:
@@ -3877,7 +3900,8 @@ def att_submit():
             db.rollback()
             return fail('签到已结束，请联系教师手动补签')
 
-        cur.execute("SELECT 1 FROM students WHERE class_id=%s AND name=%s LIMIT 1", (clid, name))
+        cur.execute("""SELECT 1 FROM class_students csm JOIN students s ON s.id=csm.student_id
+                       WHERE csm.class_id=%s AND s.name=%s LIMIT 1""", (clid, name))
         if not cur.fetchone():
             db.rollback()
             return fail(f'"{name}" 不在该班级花名册中，请确认姓名或联系教师手动补签')

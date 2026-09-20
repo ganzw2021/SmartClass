@@ -113,6 +113,22 @@ try:
         ('auto_grade_message', 'TEXT DEFAULT NULL'),
         ('auto_grade_details', 'JSON DEFAULT NULL'),
     ])
+    add_columns(cur, 'classes', [
+        ('class_type', "VARCHAR(20) NOT NULL DEFAULT 'administrative'"),
+    ])
+    cur.execute("""CREATE TABLE IF NOT EXISTS class_students (
+        class_id VARCHAR(50) NOT NULL,
+        student_id INT NOT NULL,
+        sort_order INT DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (class_id, student_id),
+        INDEX idx_class_students_student (student_id),
+        CONSTRAINT fk_class_students_class FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+        CONSTRAINT fk_class_students_student FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""")
+    # 将历史行政班归属补为成员关系；重复执行安全。
+    cur.execute("""INSERT IGNORE INTO class_students (class_id, student_id, sort_order)
+                   SELECT class_id, id, sort_order FROM students""")
     print('schema migration complete')
 finally:
     conn.close()

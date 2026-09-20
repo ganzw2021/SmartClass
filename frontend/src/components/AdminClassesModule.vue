@@ -31,6 +31,7 @@
         <div class="flex items-start justify-between mb-3">
           <div>
             <h3 class="font-bold text-slate-800">{{ cls.name }}</h3>
+            <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold" :class="cls.class_type === 'teaching' ? 'bg-violet-100 text-violet-700' : 'bg-blue-100 text-blue-700'">{{ cls.class_type === 'teaching' ? '教学班' : '行政班' }}</span>
             <p class="text-xs text-slate-400 mt-1">ID: {{ cls.id }}</p>
           </div>
           <div class="flex gap-1">
@@ -74,7 +75,7 @@
           <input v-model="studentSearch" type="text" placeholder="搜索学生姓名/学号..."
             class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-blue-400 w-48" />
           <button @click="showAddStudentModal = true" class="btn-green px-4 py-2 rounded-xl text-sm font-bold">
-            + 添加
+            {{ selectedClass.class_type === 'teaching' ? '+ 添加已有学生' : '+ 添加' }}
           </button>
           <button @click="openBatchImport" class="bg-indigo-50 text-indigo-600 px-4 py-2 rounded-xl text-sm font-bold hover:bg-indigo-100 transition-colors">
             批量添加
@@ -82,7 +83,7 @@
           <button v-if="selectedStudents.length > 0" @click="batchDeleteStudents" class="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-100 transition-colors">
             删除已选({{ selectedStudents.length }})
           </button>
-          <button @click="createAccountsForClass" class="bg-orange-50 text-orange-600 px-4 py-2 rounded-xl text-sm font-bold hover:bg-orange-100 transition-colors">
+          <button v-if="selectedClass.class_type !== 'teaching'" @click="createAccountsForClass" class="bg-orange-50 text-orange-600 px-4 py-2 rounded-xl text-sm font-bold hover:bg-orange-100 transition-colors">
             批量建账号
           </button>
         </div>
@@ -121,9 +122,9 @@
                 <span v-else class="bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full text-xs font-bold">未建账号</span>
               </td>
               <td class="py-3 px-2">
-                <button @click="editStudent(s)" class="text-xs text-blue-500 hover:text-blue-700 hover:underline mr-2">修改</button>
-                <button v-if="s.account_id" @click="resetStudentPassword(s)" class="text-xs text-orange-500 hover:underline mr-2">重置密码</button>
-                <button @click="confirmDeleteStudent(s)" class="text-xs text-red-400 hover:text-red-600 hover:underline">删除</button>
+                <button v-if="selectedClass.class_type !== 'teaching'" @click="editStudent(s)" class="text-xs text-blue-500 hover:text-blue-700 hover:underline mr-2">修改</button>
+                <button v-if="selectedClass.class_type !== 'teaching' && s.account_id" @click="resetStudentPassword(s)" class="text-xs text-orange-500 hover:underline mr-2">重置密码</button>
+                <button @click="confirmDeleteStudent(s)" class="text-xs text-red-400 hover:text-red-600 hover:underline">{{ selectedClass.class_type === 'teaching' ? '移出' : '删除' }}</button>
               </td>
             </tr>
             <tr v-if="filteredStudents.length === 0">
@@ -150,6 +151,13 @@
               <label class="block text-xs font-bold text-slate-400 uppercase mb-1">班级描述（选填）</label>
               <input v-model="classForm.description" type="text" placeholder="如：中药学专业" class="w-full border-2 border-slate-100 p-3 rounded-xl outline-none text-slate-700 focus:border-blue-400" />
             </div>
+            <div v-if="!showEditClassModal">
+              <label class="block text-xs font-bold text-slate-400 uppercase mb-1">班级类型</label>
+              <select v-model="classForm.class_type" class="w-full border-2 border-slate-100 p-3 rounded-xl outline-none text-slate-700 focus:border-blue-400">
+                <option value="administrative">行政班（学生的固定归属）</option>
+                <option value="teaching">教学班（跨班临时合班）</option>
+              </select>
+            </div>
           </div>
           <div class="flex gap-3 mt-6">
             <button @click="closeClassModals" class="flex-1 py-3 rounded-xl border-2 border-slate-100 text-slate-500 font-bold">取消</button>
@@ -165,14 +173,14 @@
     <Teleport to="body">
       <div v-if="showAddStudentModal" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" @click.self="showAddStudentModal = false">
         <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
-          <h3 class="font-bold text-lg text-slate-800 mb-4">添加学生 - {{ selectedClass?.name }}</h3>
+          <h3 class="font-bold text-lg text-slate-800 mb-4">{{ selectedClass?.class_type === 'teaching' ? '添加已有学生' : '添加学生' }} - {{ selectedClass?.name }}</h3>
           <div class="space-y-4">
             <div>
               <label class="block text-xs font-bold text-slate-400 uppercase mb-1">姓名</label>
               <input v-model="studentForm.name" type="text" placeholder="请输入学生姓名" class="w-full border-2 border-slate-100 p-3 rounded-xl outline-none text-slate-700 focus:border-blue-400" />
             </div>
             <div>
-              <label class="block text-xs font-bold text-slate-400 uppercase mb-1">学号（选填）</label>
+              <label class="block text-xs font-bold text-slate-400 uppercase mb-1">学号{{ selectedClass?.class_type === 'teaching' ? '（必填，关联已有学生）' : '（选填）' }}</label>
               <input v-model="studentForm.student_number" type="text" placeholder="请输入学号" class="w-full border-2 border-slate-100 p-3 rounded-xl outline-none text-slate-700 focus:border-blue-400" />
             </div>
           </div>
@@ -227,7 +235,8 @@
             <p class="font-bold mb-1">📋 输入格式（每行一条学生信息）：</p>
             <p>每行一条，格式：<span class="font-mono bg-indigo-100 px-1 rounded">姓名,学号</span> 或 <span class="font-mono bg-indigo-100 px-1 rounded">姓名　学号</span>（空格或Tab分隔）</p>
             <p class="mt-1">示例：<span class="font-mono">张三,2024001</span></p>
-            <p class="mt-1">学号若为空则留空，例如：<span class="font-mono">李四</span></p>
+            <p v-if="selectedClass?.class_type !== 'teaching'" class="mt-1">学号若为空则留空，例如：<span class="font-mono">李四</span></p>
+            <p v-else class="mt-1 font-bold">教学班仅关联已有学生：姓名和学号必须与行政班档案一致，不会重复创建账号。</p>
           </div>
 
           <!-- 文本输入区 -->
@@ -288,7 +297,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { getAdminClasses, createAdminClass, updateAdminClass, deleteAdminClass, addAdminClassStudent, updateAdminClassStudent, deleteAdminStudent, createAdminStudentAccounts, resetAdminStudentPassword, addStudentsToClass } from '../api.js'
+import { getAdminClasses, createAdminClass, updateAdminClass, deleteAdminClass, addAdminClassStudent, updateAdminClassStudent, deleteAdminStudent, removeAdminClassMember, createAdminStudentAccounts, resetAdminStudentPassword, addStudentsToClass } from '../api.js'
 
 const classes = ref([])
 const loading = ref(true)
@@ -300,7 +309,7 @@ const showEditStudentModal = ref(false)
 const showBatchImportModal = ref(false)
 const toast = ref('')
 
-const classForm = ref({ id: '', name: '', description: '' })
+const classForm = ref({ id: '', name: '', description: '', class_type: 'administrative' })
 const studentForm = ref({ name: '', student_number: '' })
 const studentEditForm = ref({ id: '', name: '', student_number: '' })
 const savingStudentEdit = ref(false)
@@ -369,15 +378,18 @@ function toggleSelectAll() {
 
 async function batchDeleteStudents() {
   if (selectedStudents.value.length === 0) return
-  if (!confirm(`确定删除选中的 ${selectedStudents.value.length} 名学生吗？`)) return
+  const count = selectedStudents.value.length
+  const teaching = selectedClass.value?.class_type === 'teaching'
+  if (!confirm(teaching ? `确定将选中的 ${count} 名学生移出该教学班吗？` : `确定删除选中的 ${count} 名学生吗？`)) return
   try {
     for (const id of selectedStudents.value) {
-      await deleteAdminStudent(id)
+      if (teaching) await removeAdminClassMember(selectedClass.value.id, id)
+      else await deleteAdminStudent(id)
     }
     selectedStudents.value = []
     selectAll.value = false
     loadClasses()
-    showToast(`已删除 ${selectedStudents.value.length} 名学生`)
+    showToast(teaching ? `已移出 ${count} 名学生` : `已删除 ${count} 名学生`)
   } catch (e) {
     showToast('删除失败')
   }
@@ -392,9 +404,10 @@ async function doBatchImport() {
       const data = res.data || {}
       const added = data.added || parsedStudents.value.filter(s => s.name).length
       const skipped = data.skipped || 0
+      const firstReason = data.skipped_details?.[0]?.reason
       closeBatchImport()
       loadClasses()
-      showToast(`导入完成：成功 ${added} 人${skipped > 0 ? `，跳过 ${skipped} 人（学号重复或姓名为空）` : ''}`)
+      showToast(`导入完成：成功 ${added} 人${skipped > 0 ? `，跳过 ${skipped} 人${firstReason ? `（${firstReason}）` : ''}` : ''}`)
     } else {
       showToast(res.message || '导入失败')
     }
@@ -432,20 +445,20 @@ function selectClass(cls) {
 }
 
 function editClass(cls) {
-  classForm.value = { id: cls.id, name: cls.name, description: cls.description || '' }
+  classForm.value = { id: cls.id, name: cls.name, description: cls.description || '', class_type: cls.class_type || 'administrative' }
   showEditClassModal.value = true
 }
 
 function closeClassModals() {
   showAddClassModal.value = false
   showEditClassModal.value = false
-  classForm.value = { id: '', name: '', description: '' }
+  classForm.value = { id: '', name: '', description: '', class_type: 'administrative' }
 }
 
 async function saveNewClass() {
   if (!classForm.value.name.trim()) return showToast('请输入班级名称')
   try {
-    await createAdminClass({ name: classForm.value.name, description: classForm.value.description })
+    await createAdminClass({ name: classForm.value.name, description: classForm.value.description, class_type: classForm.value.class_type })
     closeClassModals()
     loadClasses()
     showToast('班级添加成功')
@@ -467,14 +480,17 @@ async function saveClassEdit() {
 }
 
 async function confirmDeleteClass(cls) {
-  if (!confirm(`确定删除班级「${cls.name}」吗？该操作将同时删除班级下所有学生！`)) return
+  const message = cls.class_type === 'teaching'
+    ? `确定删除教学班「${cls.name}」吗？学生账号和行政班归属会保留。`
+    : `确定删除行政班「${cls.name}」吗？只有空班级可以删除。`
+  if (!confirm(message)) return
   try {
     await deleteAdminClass(cls.id)
     if (selectedClass.value?.id === cls.id) selectedClass.value = null
     loadClasses()
     showToast('已删除')
   } catch (e) {
-    showToast('删除失败')
+    showToast(e.response?.data?.message || '删除失败')
   }
 }
 
@@ -487,7 +503,7 @@ async function saveNewStudent() {
     loadClasses()
     showToast('学生添加成功')
   } catch (e) {
-    showToast('添加失败')
+    showToast(e.response?.data?.message || '添加失败')
   }
 }
 
@@ -528,11 +544,13 @@ async function saveStudentEdit() {
 }
 
 async function confirmDeleteStudent(s) {
-  if (!confirm(`确定删除学生「${s.name}」吗？`)) return
+  const teaching = selectedClass.value?.class_type === 'teaching'
+  if (!confirm(teaching ? `确定将「${s.name}」移出该教学班吗？学生档案和账号会保留。` : `确定删除学生「${s.name}」吗？`)) return
   try {
-    await deleteAdminStudent(s.id)
+    if (teaching) await removeAdminClassMember(selectedClass.value.id, s.id)
+    else await deleteAdminStudent(s.id)
     loadClasses()
-    showToast('已删除')
+    showToast(teaching ? '已移出教学班' : '已删除')
   } catch (e) {
     showToast('删除失败')
   }
