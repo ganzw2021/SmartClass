@@ -685,6 +685,18 @@ def _init_token_tables():
         attendance_record_key = cur.fetchone()
         if attendance_record_key and (attendance_record_key['CHARACTER_MAXIMUM_LENGTH'] or 0) < 256:
             cur.execute("ALTER TABLE attendance_records MODIFY session_key VARCHAR(256) NOT NULL")
+
+        # 修复历史版本只改明细、不刷新报表汇总造成的旧数据。
+        cur.execute("""UPDATE attendance_reports ar
+                       JOIN (
+                         SELECT report_id,COUNT(*) AS total_students,
+                                SUM(status='signed') AS signed_count,
+                                SUM(status='absent') AS absent_count
+                         FROM attendance_student_records GROUP BY report_id
+                       ) stats ON stats.report_id=ar.id
+                       SET ar.total_students=stats.total_students,
+                           ar.signed_count=stats.signed_count,
+                           ar.absent_count=stats.absent_count""")
         db.commit()
         logger.info("[考勤] 持久化会话、令牌和设备锁初始化完成")
     finally:
@@ -1151,12 +1163,36 @@ def att_reports():
     cur.execute(count_sql,count_params)
     total=cur.fetchone()['total']
     # 查询列表（带分页）
-    sql="SELECT * FROM attendance_reports WHERE teacher_id=%s"; params=[request.teacher_id]
-    if cid: sql+=" AND course_id=%s"; params.append(cid)
-    if clid: sql+=" AND class_id=%s"; params.append(clid)
-    sql+=" ORDER BY ended_at DESC LIMIT %s OFFSET %s"; params.extend([ps,offset])
-    cur.execute(sql,params); rows=cur.fetchall(); db.close()
-    return success({'reports':_rows(rows),'total':total,'page':page,'page_size':ps})
+    sql="""SELECT ar.*,
+                  stats.actual_total_students,stats.actual_signed_count,stats.actual_absent_count,
+                  stats.late_count,stats.leave_count,stats.early_leave_count,stats.present_count
+           FROM attendance_reports ar
+           LEFT JOIN (
+             SELECT report_id,
+                    COUNT(*) AS actual_total_students,
+                    SUM(status='signed') AS actual_signed_count,
+                    SUM(status='absent') AS actual_absent_count,
+                    SUM(status='late') AS late_count,
+                    SUM(status IN ('leave_sick','leave_personal')) AS leave_count,
+                    SUM(status='early_leave') AS early_leave_count,
+                    SUM(status IN ('signed','late','early_leave')) AS present_count
+             FROM attendance_student_records GROUP BY report_id
+           ) stats ON stats.report_id=ar.id
+           WHERE ar.teacher_id=%s"""; params=[request.teacher_id]
+    if cid: sql+=" AND ar.course_id=%s"; params.append(cid)
+    if clid: sql+=" AND ar.class_id=%s"; params.append(clid)
+    sql+=" ORDER BY ar.ended_at DESC LIMIT %s OFFSET %s"; params.extend([ps,offset])
+    cur.execute(sql,params); rows=_rows(cur.fetchall()); db.close()
+    for row in rows:
+        if row.get('actual_total_students') is not None:
+            row['total_students']=int(row.pop('actual_total_students') or 0)
+            row['signed_count']=int(row.pop('actual_signed_count') or 0)
+            row['absent_count']=int(row.pop('actual_absent_count') or 0)
+        else:
+            row.pop('actual_total_students',None); row.pop('actual_signed_count',None); row.pop('actual_absent_count',None)
+        for key in ('late_count','leave_count','early_leave_count','present_count'):
+            row[key]=int(row.get(key) or 0)
+    return success({'reports':rows,'total':total,'page':page,'page_size':ps})
 
 @app.route('/api/attendance/report/<int:rid>', methods=['GET'])
 @teacher_required
@@ -1168,15 +1204,55 @@ def att_report_detail(rid):
     r=_row(r)
     cur.execute("SELECT * FROM attendance_student_records WHERE report_id=%s ORDER BY student_name",(rid,))
     r['students']=_rows(cur.fetchall())
+    statuses=[student.get('status') for student in r['students']]
+    r['total_students']=len(statuses)
+    r['signed_count']=sum(status == 'signed' for status in statuses)
+    r['absent_count']=sum(status == 'absent' for status in statuses)
+    r['late_count']=sum(status == 'late' for status in statuses)
+    r['leave_count']=sum(status in ('leave_sick','leave_personal') for status in statuses)
+    r['early_leave_count']=sum(status == 'early_leave' for status in statuses)
+    r['present_count']=sum(status in ('signed','late','early_leave') for status in statuses)
     db.close(); return success(r)
 
 @app.route('/api/attendance/student_status', methods=['PUT'])
 @teacher_required
 def att_update_status():
     d=request.get_json() or {}
+    allowed_statuses={'signed','absent','leave_sick','leave_personal','late','early_leave'}
+    status=str(d.get('status','')).strip(); record_id=int(d.get('record_id') or 0)
+    if not record_id or status not in allowed_statuses: return err('考勤状态无效')
     db=get_db(); cur=db.cursor()
-    cur.execute("UPDATE attendance_student_records SET status=%s,note=%s,updated_by=%s,updated_at=NOW() WHERE id=%s",(d.get('status',''),d.get('note',''),request.teacher_id,int(d.get('record_id',0))))
-    db.close(); return success()
+    try:
+        db.begin()
+        cur.execute("""SELECT asr.report_id FROM attendance_student_records asr
+                       JOIN attendance_reports ar ON ar.id=asr.report_id
+                       WHERE asr.id=%s AND ar.teacher_id=%s FOR UPDATE""",(record_id,request.teacher_id))
+        record=cur.fetchone()
+        if not record:
+            db.rollback(); return err('考勤记录不存在或无权修改',404)
+        report_id=record['report_id']
+        cur.execute("""UPDATE attendance_student_records
+                       SET status=%s,note=%s,updated_by=%s,updated_at=NOW()
+                       WHERE id=%s""",(status,(d.get('note') or '').strip(),request.teacher_id,record_id))
+        cur.execute("""SELECT COUNT(*) AS total_students,
+                              SUM(status='signed') AS signed_count,
+                              SUM(status='absent') AS absent_count,
+                              SUM(status='late') AS late_count,
+                              SUM(status IN ('leave_sick','leave_personal')) AS leave_count,
+                              SUM(status='early_leave') AS early_leave_count,
+                              SUM(status IN ('signed','late','early_leave')) AS present_count
+                       FROM attendance_student_records WHERE report_id=%s""",(report_id,))
+        counts=cur.fetchone()
+        cur.execute("""UPDATE attendance_reports
+                       SET total_students=%s,signed_count=%s,absent_count=%s
+                       WHERE id=%s AND teacher_id=%s""",
+                    (counts['total_students'] or 0,counts['signed_count'] or 0,counts['absent_count'] or 0,report_id,request.teacher_id))
+        db.commit()
+        return success({key:int(value or 0) for key,value in counts.items()})
+    except Exception:
+        db.rollback(); logger.exception('修改考勤状态失败'); return err('修改考勤状态失败',500)
+    finally:
+        cur.close(); db.close()
 
 @app.route('/api/attendance/report/<int:rid>', methods=['DELETE'])
 @teacher_required

@@ -52,9 +52,12 @@
             </div>
           </div>
           <div class="flex items-center gap-4">
-            <div class="text-right">
-              <div class="text-sm font-bold text-green-600">{{ r.signed_count || 0 }} 已签</div>
-              <div class="text-sm font-bold text-red-500">{{ r.absent_count || 0 }} 缺勤</div>
+            <div class="flex max-w-[260px] flex-wrap justify-end gap-1.5 text-[11px] font-bold">
+              <span class="rounded-full bg-emerald-50 px-2 py-1 text-emerald-600">{{ r.signed_count || 0 }} 正常</span>
+              <span v-if="r.late_count" class="rounded-full bg-amber-50 px-2 py-1 text-amber-600">{{ r.late_count }} 迟到</span>
+              <span v-if="r.leave_count" class="rounded-full bg-orange-50 px-2 py-1 text-orange-600">{{ r.leave_count }} 请假</span>
+              <span v-if="r.early_leave_count" class="rounded-full bg-violet-50 px-2 py-1 text-violet-600">{{ r.early_leave_count }} 早退</span>
+              <span class="rounded-full bg-rose-50 px-2 py-1 text-rose-600">{{ r.absent_count || 0 }} 缺勤</span>
             </div>
             <div class="flex gap-2">
               <button
@@ -74,7 +77,7 @@
           <div
             v-if="r.total_students > 0"
             class="h-full bg-green-500 transition-all"
-            :style="{ width: (r.signed_count / r.total_students * 100) + '%' }"
+            :style="{ width: reportAttendanceRate(r) + '%' }"
           ></div>
         </div>
         <div class="text-xs text-slate-400 mt-1">{{ r.total_students || 0 }} 人</div>
@@ -150,7 +153,7 @@
         </div>
 
         <!-- 统计数字卡 -->
-        <div class="grid grid-cols-5 divide-x divide-slate-100 bg-white">
+        <div class="grid grid-cols-3 sm:grid-cols-6 divide-x divide-slate-100 bg-white">
           <div class="py-4 px-2 text-center">
             <div class="text-2xl font-black text-emerald-600">{{ detailSignedCount }}</div>
             <div class="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wide">已签到</div>
@@ -162,6 +165,10 @@
           <div class="py-4 px-2 text-center">
             <div class="text-2xl font-black text-orange-500">{{ leaveCount }}</div>
             <div class="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wide">请假</div>
+          </div>
+          <div class="py-4 px-2 text-center">
+            <div class="text-2xl font-black text-violet-500">{{ earlyLeaveCount }}</div>
+            <div class="text-[10px] text-slate-400 font-bold mt-1 uppercase tracking-wide">早退</div>
           </div>
           <div class="py-4 px-2 text-center">
             <div class="text-2xl font-black text-rose-600">{{ detailAbsentCount }}</div>
@@ -331,16 +338,18 @@ const leaveCount = computed(() => {
   const students = detailData.value.students || []
   return students.filter(s => s.status === 'leave_sick' || s.status === 'leave_personal').length
 })
-// 计算当前详情中的已签到和缺勤数（实时反映修改）
-const detailSignedCount = computed(() => detailData.value.students?.filter(s => s.status === 'signed' || s.status === 'late').length || 0)
+// 各状态互斥统计，避免迟到重复计入“正常”、请假/早退误计入“缺勤”。
+const detailSignedCount = computed(() => detailData.value.students?.filter(s => s.status === 'signed').length || 0)
 const detailAbsentCount = computed(() => {
   const students = detailData.value.students || []
-  return students.filter(s => s.status === 'absent' || s.status === 'leave_sick' || s.status === 'leave_personal' || s.status === 'early_leave').length
+  return students.filter(s => s.status === 'absent').length
 })
+const earlyLeaveCount = computed(() => detailData.value.students?.filter(s => s.status === 'early_leave').length || 0)
+const detailPresentCount = computed(() => detailSignedCount.value + lateCount.value + earlyLeaveCount.value)
 const attendanceRate = computed(() => {
   const total = detailData.value.total_students || 0
   if (!total) return 0
-  const rate = (detailSignedCount.value / total * 100)
+  const rate = (detailPresentCount.value / total * 100)
   return Math.round(rate)
 })
 const exporting = ref(false)
@@ -383,7 +392,8 @@ async function doUpdateStatus() {
   if (!modifyTarget.value) return
   submitting.value = true
   try {
-    await updateStudentAttendanceStatus(modifyTarget.value.id, selectedStatus.value, modifyNote.value)
+    const response = await updateStudentAttendanceStatus(modifyTarget.value.id, selectedStatus.value, modifyNote.value)
+    if (!response.success) throw new Error(response.message || '修改失败')
     
     // 同步更新 detailData 中的记录（触发弹窗内统计卡片更新）
     const students = detailData.value.students || []
@@ -393,33 +403,10 @@ async function doUpdateStatus() {
       students.splice(idx, 1, { ...students[idx], status: selectedStatus.value, note: modifyNote.value })
     }
     
-    // 同步更新列表页的卡片统计
-    const reportId = detailData.value.id
-    const reportIdx = reports.value.findIndex(r => r.id === reportId)
-    if (reportIdx >= 0) {
-      const report = reports.value[reportIdx]
-      const oldSigned = report.signed_count || 0
-      const oldAbsent = report.absent_count || 0
-      const total = report.total_students || 0
-      
-      // 计算新状态对签到/缺勤数的影响
-      const oldStatus = modifyTarget.value.status
-      const newStatus = selectedStatus.value
-      const isSigned = (s) => s === 'signed' || s === 'late'
-      const isAbsent = (s) => s === 'absent' || s === 'leave_sick' || s === 'leave_personal' || s === 'early_leave'
-      
-      let newSigned = oldSigned
-      let newAbsent = oldAbsent
-      if (isSigned(oldStatus) && !isSigned(newStatus)) newSigned--
-      if (!isSigned(oldStatus) && isSigned(newStatus)) newSigned++
-      if (isAbsent(oldStatus) && !isAbsent(newStatus)) newAbsent--
-      if (!isAbsent(oldStatus) && isAbsent(newStatus)) newAbsent++
-      
-      // 使用 splice 触发响应式更新
-      reports.value.splice(reportIdx, 1, { ...report, signed_count: Math.max(0, newSigned), absent_count: Math.max(0, newAbsent) })
-    }
-    
+    Object.assign(detailData.value, response.data || {})
     modifyTarget.value = null
+    // 重新读取权威汇总，确保列表卡片与弹窗、数据库始终一致。
+    await loadReports(currentPage.value)
   } catch (e) {
     console.error('更新状态失败', e)
     alert('修改失败，请重试')
@@ -520,6 +507,12 @@ async function doDelete() {
 function changePage(page) {
   if (page < 1 || page > totalPages.value) return
   loadReports(page)
+}
+
+function reportAttendanceRate(report) {
+  const totalStudents = Number(report.total_students || 0)
+  if (!totalStudents) return 0
+  return Math.round(Number(report.present_count || 0) / totalStudents * 100)
 }
 
 // 格式化日期
