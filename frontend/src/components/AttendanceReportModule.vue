@@ -97,7 +97,7 @@
     </div>
 
     <!-- 详情弹窗 -->
-    <div v-if="showDetail" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3 sm:p-4" @click.self="showDetail = false">
+    <div v-if="showDetail" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-3 sm:p-4">
       <div class="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
 
         <!-- 顶部渐变横幅 -->
@@ -277,7 +277,7 @@
     </div>
 
     <!-- 删除确认弹窗 -->
-    <div v-if="deleteTarget" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" @click.self="deleteTarget = null">
+    <div v-if="deleteTarget" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div class="bg-white rounded-2xl p-8 w-full max-w-sm shadow-2xl text-center">
         <div class="text-5xl mb-4">🗑️</div>
         <h3 class="font-black text-slate-700 text-lg mb-2">确认删除</h3>

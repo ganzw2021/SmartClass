@@ -74,7 +74,7 @@
     </div>
 
     <!-- ========== 新建/编辑弹窗 ========== -->
-    <div v-if="showModal" class="fixed inset-0 bg-black/30 flex items-center justify-center z-50" @click.self="closeModal">
+    <div v-if="showModal" class="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
       <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col">
         <!-- 弹窗头部 -->
         <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
@@ -132,7 +132,7 @@
     </div>
 
     <!-- ========== 删除确认弹窗 ========== -->
-    <div v-if="showDeleteModal" class="fixed inset-0 bg-black/30 flex items-center justify-center z-50" @click.self="showDeleteModal=false">
+    <div v-if="showDeleteModal" class="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
       <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6">
         <div class="text-center">
           <div class="text-4xl mb-3">🗑️</div>

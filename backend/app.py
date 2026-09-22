@@ -3,7 +3,7 @@
 import os, sys, json, time, uuid, secrets, threading, subprocess, logging, zipfile, io, html
 from datetime import datetime, timedelta
 from functools import wraps
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import bcrypt, pymysql, jwt
 from dbutils.pooled_db import PooledDB
 from flask import Flask, request, jsonify, send_file, Response
@@ -334,9 +334,9 @@ def _init_points_tables():
                 course_id VARCHAR(50) NULL,
                 class_id VARCHAR(64) NOT NULL,
                 student_id INT NOT NULL,
-                attendance_score DECIMAL(10,2) NOT NULL DEFAULT 20,
-                classroom_score DECIMAL(10,2) NOT NULL DEFAULT 0,
-                homework_adjustment DECIMAL(10,2) NOT NULL DEFAULT 0,
+                attendance_score DECIMAL(10,1) NOT NULL DEFAULT 20,
+                classroom_score DECIMAL(10,1) NOT NULL DEFAULT 0,
+                homework_adjustment DECIMAL(10,1) NOT NULL DEFAULT 0,
                 updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 KEY idx_point_course_class (course_id, class_id),
                 KEY idx_point_student (student_id)
@@ -350,7 +350,7 @@ def _init_points_tables():
                 student_id INT NOT NULL,
                 teacher_id INT NULL,
                 category VARCHAR(20) NOT NULL,
-                delta DECIMAL(10,2) NOT NULL,
+                delta DECIMAL(10,1) NOT NULL,
                 reason VARCHAR(255) DEFAULT '',
                 created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 KEY idx_point_log_course (course_id, class_id, created_at),
@@ -396,6 +396,20 @@ def _init_points_tables():
         if not cur.fetchone():
             cur.execute("""CREATE UNIQUE INDEX uq_point_course_student
                            ON point_scores (course_id, class_id, student_id)""")
+
+        # 积分榜统一保存为一位小数，历史两位小数数据由 MySQL 四舍五入迁移。
+        for table_name, column_name, default_value in (
+            ('point_scores', 'attendance_score', 20),
+            ('point_scores', 'classroom_score', 0),
+            ('point_scores', 'homework_adjustment', 0),
+            ('point_score_logs', 'delta', 0),
+        ):
+            cur.execute("""SELECT NUMERIC_SCALE FROM information_schema.COLUMNS
+                           WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=%s
+                             AND COLUMN_NAME=%s LIMIT 1""", (table_name, column_name))
+            column = cur.fetchone()
+            if column and int(column.get('NUMERIC_SCALE') or 0) != 1:
+                cur.execute(f"ALTER TABLE {table_name} MODIFY COLUMN {column_name} DECIMAL(10,1) NOT NULL DEFAULT {default_value}")
         db.commit()
     finally:
         cur.close(); db.close()
@@ -436,9 +450,12 @@ def get_points_board():
     rows=[]
     for r in cur.fetchall():
         base=(float(r.get('ladder_score') or 0)/hw_count*0.2) if hw_count else 0.0
-        r['homework_base']=round(base,2)
-        r['homework_score']=round(base,2)
-        r['total_score']=round(float(r.get('attendance_score') or 0)+r['homework_score']+float(r.get('classroom_score') or 0),2)
+        r['attendance_score']=round(float(r.get('attendance_score') or 0),1)
+        r['classroom_score']=round(float(r.get('classroom_score') or 0),1)
+        r['ladder_score']=round(float(r.get('ladder_score') or 0),1)
+        r['homework_base']=round(base,1)
+        r['homework_score']=round(base,1)
+        r['total_score']=round(r['attendance_score']+r['homework_score']+r['classroom_score'],1)
         rows.append(r)
     db.close(); rows.sort(key=lambda x:(-x['total_score'],x['student_name']))
     for i,r in enumerate(rows,1): r['rank']=i
@@ -449,7 +466,12 @@ def get_points_board():
 @teacher_required
 def adjust_points():
     d=request.get_json() or {}; course_id=str(d.get('course_id','')); clid=str(d.get('class_id','')); sid=int(d.get('student_id') or 0)
-    category=str(d.get('category','')); delta=float(d.get('delta') or 0); reason=(d.get('reason') or '').strip()
+    category=str(d.get('category','')); reason=(d.get('reason') or '').strip()
+    try:
+        delta=Decimal(str(d.get('delta') or 0)).quantize(Decimal('0.1'))
+    except (InvalidOperation, ValueError):
+        return err('分数格式无效')
+    if not delta.is_finite(): return err('分数格式无效')
     if not course_id or not clid or not sid or category not in ('attendance','classroom') or delta==0: return err('参数不完整')
     if not _teacher_owns_course_class(course_id, clid, request.teacher_id):
         return err('无权操作此课程或班级', 403)
@@ -469,7 +491,7 @@ def get_point_logs():
     course_id=str(request.args.get('course_id','')); clid=str(request.args.get('class_id','')); sid=request.args.get('student_id')
     if not course_id or not clid: return err('course_id 和 class_id 不能为空')
     if not _teacher_owns_course_class(course_id, clid, request.teacher_id): return err('无权操作此课程或班级', 403)
-    db=get_db(); cur=db.cursor(); q='''SELECT l.*,t.username AS teacher_username FROM point_score_logs l LEFT JOIN teachers t ON t.id=l.teacher_id WHERE l.course_id=%s AND l.class_id=%s'''; args=[course_id,clid]
+    db=get_db(); cur=db.cursor(); q='''SELECT l.*,COALESCE(NULLIF(t.real_name,''),t.username) AS teacher_name FROM point_score_logs l LEFT JOIN teachers t ON t.id=l.teacher_id WHERE l.course_id=%s AND l.class_id=%s'''; args=[course_id,clid]
     if sid: q+=' AND l.student_id=%s'; args.append(int(sid))
     q+=' ORDER BY l.created_at DESC LIMIT 200'; cur.execute(q,args); rows=cur.fetchall(); db.close(); return success(_rows(rows))
 

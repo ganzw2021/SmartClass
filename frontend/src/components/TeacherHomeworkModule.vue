@@ -80,7 +80,7 @@
 
     <!-- 创建/编辑作业弹窗 -->
     <Teleport to="body">
-      <div v-if="showCreateModal" class="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-6" @click.self="closeCreateModal">
+      <div v-if="showCreateModal" class="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-6">
         <div class="bg-white rounded-[24px] w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
           <div class="flex items-center justify-between mb-6">
             <h3 class="text-xl font-bold text-slate-800">{{ editingHomework ? '编辑作业' : '发布作业' }}</h3>
@@ -209,7 +209,7 @@
 
     <!-- 作业详情/提交列表弹窗 -->
     <Teleport to="body">
-      <div v-if="showDetailModal" class="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-6" @click.self="showDetailModal = false">
+      <div v-if="showDetailModal" class="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-6">
         <div class="bg-white rounded-[24px] w-full max-w-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
           <div class="flex items-center justify-between mb-6">
             <h3 class="text-xl font-bold text-slate-800">{{ currentHomework?.title }}</h3>
@@ -419,7 +419,7 @@
 
     <!-- 评分弹窗 -->
     <Teleport to="body">
-      <div v-if="showGradeModal" class="fixed inset-0 bg-black/40 z-[110] flex items-center justify-center p-6" @click.self="showGradeModal = false">
+      <div v-if="showGradeModal" class="fixed inset-0 bg-black/40 z-[110] flex items-center justify-center p-6">
         <div class="bg-white rounded-[24px] w-full max-w-md p-6 shadow-2xl">
           <div class="flex items-center justify-between mb-6">
             <h3 class="text-xl font-bold text-slate-800">评分 - {{ gradingSubmission?.student_name }}</h3>
@@ -457,7 +457,7 @@
 
     <!-- 删除确认弹窗 -->
     <Teleport to="body">
-      <div v-if="showDeleteModal" class="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-6" @click.self="showDeleteModal = false">
+      <div v-if="showDeleteModal" class="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-6">
         <div class="bg-white rounded-[24px] w-full max-w-sm p-6 shadow-2xl">
           <div class="text-center">
             <div class="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -482,7 +482,7 @@
 
     <!-- 评分脚本内容弹窗 -->
     <Teleport to="body">
-      <div v-if="showScriptModal" class="fixed inset-0 bg-black/40 z-[110] flex items-center justify-center p-6" @click.self="showScriptModal = false">
+      <div v-if="showScriptModal" class="fixed inset-0 bg-black/40 z-[110] flex items-center justify-center p-6">
         <div class="bg-white rounded-[24px] w-full max-w-2xl p-6 shadow-2xl max-h-[80vh] overflow-hidden flex flex-col">
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-xl font-bold text-slate-800">评分脚本内容</h3>

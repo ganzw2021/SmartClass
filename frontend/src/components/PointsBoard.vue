@@ -36,7 +36,7 @@
             <td class="p-4">{{ categoryLabel(log.category) }}</td>
             <td class="p-4 font-bold" :class="Number(log.delta) > 0 ? 'text-green-600' : 'text-red-600'">{{ formatDelta(log.delta) }}</td>
             <td class="p-4">{{ formatTime(log.created_at) }}</td>
-            <td class="p-4">{{ log.teacher_username || '-' }}</td>
+            <td class="p-4">{{ log.teacher_name || '-' }}</td>
           </tr>
           <tr v-if="!logs.length"><td colspan="5" class="p-8 text-center text-slate-400">暂无调整记录</td></tr>
         </tbody>
@@ -61,10 +61,10 @@
             <td class="p-4 font-bold">{{ r.rank }}</td>
             <td class="p-4 font-mono">{{ r.student_number || '-' }}</td>
             <td class="p-4 font-bold">{{ r.student_name }}</td>
-            <td class="p-4 text-center"><Adjust v-if="editingStudentId === r.student_id" :value="r.attendance_score" @minus="change(r, 'attendance', -1)" @plus="change(r, 'attendance', 1)" /><span v-else>{{ Number(r.attendance_score || 0).toFixed(2) }}</span></td>
-            <td class="p-4 text-center"><span class="font-bold">{{ Number(r.homework_score || 0).toFixed(2) }}</span><small class="block text-slate-400">天梯 {{ r.ladder_score }} / {{ data.homework_count }} 个作业</small></td>
-            <td class="p-4 text-center"><Adjust v-if="editingStudentId === r.student_id" :value="r.classroom_score" @minus="change(r, 'classroom', -1)" @plus="change(r, 'classroom', 1)" /><span v-else>{{ Number(r.classroom_score || 0).toFixed(2) }}</span></td>
-            <td class="p-4 text-center text-lg font-black text-green-700">{{ Number(r.total_score || 0).toFixed(2) }}</td>
+            <td class="p-4 text-center"><Adjust v-if="editingStudentId === r.student_id" :value="r.attendance_score" label="考勤分" @minus="change(r, 'attendance', -1)" @plus="change(r, 'attendance', 1)" @set="setScore(r, 'attendance', $event)" /><span v-else>{{ formatScore(r.attendance_score) }}</span></td>
+            <td class="p-4 text-center"><span class="font-bold">{{ formatScore(r.homework_score) }}</span><small class="block text-slate-400">天梯 {{ formatScore(r.ladder_score) }} / {{ data.homework_count }} 个作业</small></td>
+            <td class="p-4 text-center"><Adjust v-if="editingStudentId === r.student_id" :value="r.classroom_score" label="课堂分" @minus="change(r, 'classroom', -1)" @plus="change(r, 'classroom', 1)" @set="setScore(r, 'classroom', $event)" /><span v-else>{{ formatScore(r.classroom_score) }}</span></td>
+            <td class="p-4 text-center text-lg font-black text-green-700">{{ formatScore(r.total_score) }}</td>
             <td class="p-4 text-center whitespace-nowrap"><div class="inline-flex gap-2"><button @click="toggleEditing(r)" :disabled="savingStudentId === r.student_id" class="px-3 py-2 rounded-lg bg-blue-600 text-white font-bold disabled:opacity-50">{{ editingStudentId === r.student_id ? '保存' : '调整' }}</button><button @click="toggleLogs(r)" class="px-3 py-2 rounded-lg bg-slate-700 text-white font-bold">{{ showLogs && selectedLogStudent === r.student_id ? '收起记录' : '记录' }}</button></div></td>
           </tr>
           <tr v-if="!filteredRows.length"><td colspan="8" class="p-8 text-center text-slate-400">{{ rows.length ? '未找到匹配的学生' : '暂无学生数据' }}</td></tr>
@@ -79,13 +79,20 @@ import { computed, ref, h } from 'vue'
 import { getPointsBoard, adjustPoints, getPointLogs } from '../api.js'
 
 const Adjust = {
-  props: { value: [Number, String] },
-  emits: ['minus', 'plus'],
+  props: { value: [Number, String], label: String },
+  emits: ['minus', 'plus', 'set'],
   setup(props, { emit }) {
     return () => h('div', { class: 'inline-flex items-center gap-2' }, [
-      h('button', { class: 'w-7 h-7 rounded-md bg-red-50 text-red-600 font-black', onClick: () => emit('minus') }, '-'),
-      h('span', { class: 'min-w-[52px]' }, Number(props.value || 0).toFixed(2)),
-      h('button', { class: 'w-7 h-7 rounded-md bg-green-50 text-green-600 font-black', onClick: () => emit('plus') }, '+')
+      h('button', { type: 'button', class: 'w-7 h-7 rounded-md bg-red-50 text-red-600 font-black', onClick: () => emit('minus') }, '-'),
+      h('input', {
+        type: 'number',
+        step: '0.1',
+        value: Number(props.value || 0).toFixed(1),
+        'aria-label': `输入${props.label || '分数'}`,
+        class: 'w-20 rounded-lg border border-slate-200 px-2 py-1 text-center font-bold outline-none focus:border-green-500',
+        onChange: event => emit('set', event.target.value)
+      }),
+      h('button', { type: 'button', class: 'w-7 h-7 rounded-md bg-green-50 text-green-600 font-black', onClick: () => emit('plus') }, '+')
     ])
   }
 }
@@ -199,18 +206,42 @@ function toggleEditing(row) {
       statusMessage.value = '请先保存当前学生的调整'
       return
     }
-    pendingChanges.value = { [row.student_id]: { attendance: 0, classroom: 0 } }
+    pendingChanges.value = {
+      [row.student_id]: {
+        attendance: 0,
+        classroom: 0,
+        baseAttendance: roundScore(row.attendance_score),
+        baseClassroom: roundScore(row.classroom_score)
+      }
+    }
     statusMessage.value = ''
     editingStudentId.value = row.student_id
   }
 }
 
 function change(row, category, delta) {
-  const current = pendingChanges.value[row.student_id] || { attendance: 0, classroom: 0 }
-  pendingChanges.value = { ...pendingChanges.value, [row.student_id]: { ...current, [category]: current[category] + delta } }
   const field = category === 'attendance' ? 'attendance_score' : 'classroom_score'
-  row[field] = Number(row[field] || 0) + delta
-  row.total_score = Number(row.attendance_score || 0) + Number(row.homework_score || 0) + Number(row.classroom_score || 0)
+  setScore(row, category, roundScore(Number(row[field] || 0) + delta))
+}
+
+function setScore(row, category, value) {
+  const target = Number(value)
+  if (!Number.isFinite(target)) {
+    statusMessage.value = '请输入有效分数'
+    return
+  }
+  const current = pendingChanges.value[row.student_id]
+  if (!current) return
+  const field = category === 'attendance' ? 'attendance_score' : 'classroom_score'
+  const baseKey = category === 'attendance' ? 'baseAttendance' : 'baseClassroom'
+  const normalized = roundScore(target)
+  row[field] = normalized
+  pendingChanges.value = {
+    ...pendingChanges.value,
+    [row.student_id]: { ...current, [category]: roundScore(normalized - current[baseKey]) }
+  }
+  row.total_score = roundScore(Number(row.attendance_score || 0) + Number(row.homework_score || 0) + Number(row.classroom_score || 0))
+  statusMessage.value = ''
   recalculateRanks()
 }
 
@@ -277,7 +308,15 @@ function categoryLabel(category) {
 
 function formatDelta(value) {
   const number = Number(value || 0)
-  return `${number > 0 ? '+' : ''}${number.toFixed(2)}`
+  return `${number > 0 ? '+' : ''}${number.toFixed(1)}`
+}
+
+function roundScore(value) {
+  return Math.round((Number(value || 0) + Number.EPSILON) * 10) / 10
+}
+
+function formatScore(value) {
+  return roundScore(value).toFixed(1)
 }
 
 function formatTime(value) {

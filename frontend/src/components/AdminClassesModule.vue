@@ -139,7 +139,7 @@
 
     <!-- 新增/编辑班级弹窗 -->
     <Teleport to="body">
-      <div v-if="showAddClassModal || showEditClassModal" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" @click.self="closeClassModals">
+      <div v-if="showAddClassModal || showEditClassModal" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
           <h3 class="font-bold text-lg text-slate-800 mb-4">{{ showEditClassModal ? '编辑班级' : '新增班级' }}</h3>
           <div class="space-y-4">
@@ -171,7 +171,7 @@
 
     <!-- 新增学生弹窗 -->
     <Teleport to="body">
-      <div v-if="showAddStudentModal" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" @click.self="showAddStudentModal = false">
+      <div v-if="showAddStudentModal" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
           <h3 class="font-bold text-lg text-slate-800 mb-4">{{ selectedClass?.class_type === 'teaching' ? '添加已有学生' : '添加学生' }} - {{ selectedClass?.name }}</h3>
           <div class="space-y-4">
@@ -194,7 +194,7 @@
 
     <!-- 编辑学生弹窗 -->
     <Teleport to="body">
-      <div v-if="showEditStudentModal" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" @click.self="closeStudentEdit">
+      <div v-if="showEditStudentModal" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
           <h3 class="font-bold text-lg text-slate-800 mb-4">修改学生 - {{ selectedClass?.name }}</h3>
           <div class="space-y-4">
@@ -219,7 +219,7 @@
 
     <!-- 批量添加学生弹窗 -->
     <Teleport to="body">
-      <div v-if="showBatchImportModal" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" @click.self="closeBatchImport">
+      <div v-if="showBatchImportModal" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl w-full max-w-lg p-6 shadow-2xl max-h-[85vh] flex flex-col">
           <div class="flex justify-between items-center mb-4">
             <h3 class="font-bold text-lg text-slate-800">批量添加学生 - {{ selectedClass?.name }}</h3>

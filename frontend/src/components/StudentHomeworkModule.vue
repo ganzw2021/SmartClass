@@ -117,7 +117,7 @@
 
     <!-- 提交作业弹窗 -->
     <Teleport to="body">
-      <div v-if="submitHw" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6" @click.self="submitHw = null">
+      <div v-if="submitHw" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6">
         <div class="bg-white rounded-t-3xl sm:rounded-[32px] w-full sm:max-w-lg sm:p-8 p-5 shadow-2xl overflow-y-auto max-h-[90vh] sm:max-h-[85vh]">
           <!-- 移动端：顶部拖动条 -->
           <div class="sm:hidden w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4"></div>
@@ -162,7 +162,7 @@
       </div>
 
       <!-- 作业详情弹窗 -->
-      <div v-if="detailHw" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6" @click.self="detailHw = null">
+      <div v-if="detailHw" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6">
         <div class="bg-white rounded-t-3xl sm:rounded-[32px] w-full sm:max-w-lg sm:p-8 p-5 shadow-2xl overflow-y-auto max-h-[90vh] sm:max-h-[85vh] relative">
           <!-- 移动端：顶部拖动条 -->
           <div class="sm:hidden w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4"></div>

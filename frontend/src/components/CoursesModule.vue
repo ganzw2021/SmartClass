@@ -59,7 +59,7 @@
 
     <!-- 课程弹窗 -->
     <Teleport to="body">
-      <div v-if="showModal" class="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-6" @click.self="showModal = false">
+      <div v-if="showModal" class="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-6">
         <div class="bg-white rounded-[32px] w-full max-w-lg p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
           <CourseModal 
             v-if="showModal"

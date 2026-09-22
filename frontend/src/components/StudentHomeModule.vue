@@ -145,7 +145,7 @@
 
     <!-- 编辑签名弹窗 -->
     <Teleport to="body">
-      <div v-if="showEditModal" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6" @click.self="showEditModal = false">
+      <div v-if="showEditModal" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6">
         <div class="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md sm:p-6 p-5 shadow-2xl">
           <!-- 移动端顶部拖动条 -->
           <div class="sm:hidden w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4"></div>
@@ -171,7 +171,7 @@
 
     <!-- 修改密码弹窗 -->
     <Teleport to="body">
-      <div v-if="showPasswordModal" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6" @click.self="showPasswordModal = false">
+      <div v-if="showPasswordModal" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6">
         <div class="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md sm:p-6 p-5 shadow-2xl">
           <!-- 移动端顶部拖动条 -->
           <div class="sm:hidden w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4"></div>

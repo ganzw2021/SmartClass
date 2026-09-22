@@ -69,7 +69,7 @@
 
     <!-- 上传弹窗 -->
     <Teleport to="body">
-      <div v-if="showUploadModal" class="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-6" @click.self="showUploadModal = false">
+      <div v-if="showUploadModal" class="fixed inset-0 bg-black/40 z-[100] flex items-center justify-center p-6">
         <div class="bg-white rounded-[32px] w-full max-w-lg p-8 shadow-2xl">
           <h3 class="text-xl font-bold text-slate-800 mb-6">上传课程资源</h3>
           <div class="space-y-4">

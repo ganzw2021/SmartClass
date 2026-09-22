@@ -52,7 +52,7 @@
 
     <!-- 新增/编辑弹窗 -->
     <Teleport to="body">
-      <div v-if="showAddModal || showEditModal" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" @click.self="closeModals">
+      <div v-if="showAddModal || showEditModal" class="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl w-full max-w-md p-6 shadow-2xl">
           <h3 class="font-bold text-lg text-slate-800 mb-4">{{ showEditModal ? '编辑教师' : '新增教师' }}</h3>
           <div class="space-y-4">
