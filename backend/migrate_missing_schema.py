@@ -2,7 +2,7 @@
 """Idempotent schema repair for the current SmartClass backend."""
 import os
 import pymysql
-from seed_lucky_herbs import HERBS
+from seed_lucky_herbs import catalog_rows
 
 # Keep the migration runnable from a clean virtualenv; the backend's .env is
 # intentionally not required as an installed Python dependency.
@@ -92,9 +92,7 @@ try:
         UNIQUE KEY uk_herb_name (name)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""")
     # 新环境和旧环境均可重复执行；已有药材资料保持原样。
-    herb_rows = [(name, category, efficacy)
-                 for category, herbs in HERBS.items() for name, efficacy in herbs]
-    cur.executemany("INSERT IGNORE INTO herbs (name,category,efficacy) VALUES (%s,%s,%s)", herb_rows)
+    cur.executemany("INSERT IGNORE INTO herbs (name,category,efficacy) VALUES (%s,%s,%s)", catalog_rows())
 
     cur.execute("""CREATE TABLE IF NOT EXISTS homework_grading_scripts (
         id INT AUTO_INCREMENT PRIMARY KEY,

@@ -110,6 +110,7 @@
 
 <script setup>
 import { ref, computed, watch, onBeforeUnmount, getCurrentInstance } from 'vue'
+import { extraSignatures } from '../data/luckyMessages.js'
 const props = defineProps({ classes: { type: Array, default: () => [] } })
 const BACKEND_BASE = (import.meta.env.VITE_BACKEND_BASE || '').replace(/\/$/, '')
 const artId = `lucky-tube-${getCurrentInstance().uid}`
@@ -160,7 +161,8 @@ const signaturePool = [
   '今天认真读过的内容，会成为明天的灵感。', '给自己一点信心，你已经比想象中更会思考。',
   '愿你越学越会问，越问越会学。', '从观察到理解，每一步都值得珍惜。',
   '课堂上的一次尝试，可能成为成长的转折点。', '把知识讲给别人听，是检验理解的好办法。',
-  '愿你与同学互相启发，一起找到更多答案。', '新的知识正在靠近，准备好迎接它吧。'
+  '愿你与同学互相启发，一起找到更多答案。', '新的知识正在靠近，准备好迎接它吧。',
+  ...extraSignatures
 ]
 const backupHerbs = [
   { name: '人参', category: '补气药', efficacy: '大补元气，复脉固脱，补脾益肺，生津养血' },
@@ -185,16 +187,30 @@ const backupHerbs = [
   { name: '甘草', category: '补气药', efficacy: '补脾益气，清热解毒，祛痰止咳，缓急止痛' }
 ]
 const pick = items => items[Math.floor(Math.random() * items.length)]
-const recentHerbs = []
-const recentSignatures = []
-function pickFresh(items, recent) {
-  const options = items.filter(item => !recent.includes(typeof item === 'string' ? item : item.name))
-  return pick(options.length ? options : items)
+function shuffled(items, previous) {
+  const deck = [...items]
+  for (let index = deck.length - 1; index > 0; index--) {
+    const other = Math.floor(Math.random() * (index + 1))
+    ;[deck[index], deck[other]] = [deck[other], deck[index]]
+  }
+  if (deck.length > 1 && (deck.at(-1)?.name || deck.at(-1)) === previous) {
+    ;[deck[0], deck[deck.length - 1]] = [deck[deck.length - 1], deck[0]]
+  }
+  return deck
 }
-function remember(recent, value, limit) {
-  if (!value) return
-  recent.push(value)
-  if (recent.length > limit) recent.shift()
+let signatureDeck = []
+let herbDeck = []
+let backupHerbDeck = []
+let lastSignature = ''
+let lastHerbName = ''
+function nextSignature() {
+  if (!signatureDeck.length) signatureDeck = shuffled(signaturePool, lastSignature)
+  lastSignature = signatureDeck.pop()
+  return lastSignature
+}
+function nextBackupHerb() {
+  if (!backupHerbDeck.length) backupHerbDeck = shuffled(backupHerbs, lastHerbName)
+  return backupHerbDeck.pop()
 }
 let phaseTimer
 let requestController
@@ -223,34 +239,36 @@ function onDrawEnd(event) {
 }
 
 async function fetchRandomHerb(version) {
-  const controller = new AbortController()
-  requestController = controller
-  const timeout = setTimeout(() => controller.abort(), 4500)
-  let herb = pickFresh(backupHerbs, recentHerbs)
-  try {
-    const query = recentHerbs.length ? `?exclude=${encodeURIComponent(recentHerbs.join(','))}` : ''
-    const res = await fetch(`${BACKEND_BASE}/api/herb/random${query}`, { signal: controller.signal })
-    if (!res.ok) throw new Error('药材接口请求失败')
-    const data = await res.json()
-    if (data.success && data.data?.name) herb = data.data
-  } catch {
-    // 失败、超时和无效响应均使用本地药材，抽签动画不等待网络。
-  } finally {
-    clearTimeout(timeout)
-    if (requestController === controller) requestController = undefined
+  if (!herbDeck.length) {
+    const controller = new AbortController()
+    requestController = controller
+    const timeout = setTimeout(() => controller.abort(), 4500)
+    try {
+      const res = await fetch(`${BACKEND_BASE}/api/herbs?page_size=600`, { signal: controller.signal })
+      if (!res.ok) throw new Error('药材接口请求失败')
+      const data = await res.json()
+      const herbs = data.success && Array.isArray(data.data?.herbs)
+        ? data.data.herbs.filter(herb => herb.name && herb.category && herb.efficacy)
+        : []
+      if (herbs.length) herbDeck = shuffled(herbs, lastHerbName)
+    } catch {
+      // 失败、超时和无效响应均使用本地药材，抽签动画不等待网络。
+    } finally {
+      clearTimeout(timeout)
+      if (requestController === controller) requestController = undefined
+    }
   }
-  if (version === drawVersion) {
-    selectedHerb.value = herb
-    remember(recentHerbs, herb.name, 12)
-  }
+  if (version !== drawVersion) return
+  const herb = herbDeck.length ? herbDeck.pop() : nextBackupHerb()
+  selectedHerb.value = herb
+  lastHerbName = herb.name
 }
 function doRandom() {
   if (isBusy.value || !students.value.length) return
   requestController?.abort()
   const version = ++drawVersion
   const student = pick(students.value)
-  const signature = student.signature || pickFresh(signaturePool, recentSignatures)
-  if (!student.signature) remember(recentSignatures, signature, 12)
+  const signature = student.signature || nextSignature()
   selectedStudent.value = {
     name: student.name || student,
     avatar: student.avatar || null,

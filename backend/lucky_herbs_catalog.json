@@ -1,0 +1,2502 @@
+[
+  {
+    "name": "人参",
+    "category": "补气药",
+    "efficacy": "大补元气，补脾益肺，生津养血，安神益智"
+  },
+  {
+    "name": "党参",
+    "category": "补气药",
+    "efficacy": "健脾益肺，养血生津"
+  },
+  {
+    "name": "太子参",
+    "category": "补气药",
+    "efficacy": "益气健脾，生津润肺"
+  },
+  {
+    "name": "黄芪",
+    "category": "补气药",
+    "efficacy": "补气升阳，固表止汗，利水消肿"
+  },
+  {
+    "name": "白术",
+    "category": "补气药",
+    "efficacy": "健脾益气，燥湿利水，止汗"
+  },
+  {
+    "name": "山药",
+    "category": "补气药",
+    "efficacy": "补脾养胃，生津益肺，补肾涩精"
+  },
+  {
+    "name": "白扁豆",
+    "category": "补气药",
+    "efficacy": "健脾化湿，和中消暑"
+  },
+  {
+    "name": "甘草",
+    "category": "补气药",
+    "efficacy": "补脾益气，清热解毒，缓急止痛，调和诸药"
+  },
+  {
+    "name": "大枣",
+    "category": "补气药",
+    "efficacy": "补中益气，养血安神"
+  },
+  {
+    "name": "蜂蜜",
+    "category": "补气药",
+    "efficacy": "补中，润燥，止痛，解毒"
+  },
+  {
+    "name": "饴糖",
+    "category": "补气药",
+    "efficacy": "补益中气，缓急止痛，润肺止咳"
+  },
+  {
+    "name": "刺五加",
+    "category": "补气药",
+    "efficacy": "益气健脾，补肾安神"
+  },
+  {
+    "name": "绞股蓝",
+    "category": "补气药",
+    "efficacy": "益气健脾，化痰止咳，清热解毒"
+  },
+  {
+    "name": "红景天",
+    "category": "补气药",
+    "efficacy": "益气活血，通脉平喘"
+  },
+  {
+    "name": "沙棘",
+    "category": "补气药",
+    "efficacy": "健脾消食，活血散瘀，化痰宽胸"
+  },
+  {
+    "name": "红芪",
+    "category": "补气药",
+    "efficacy": "补气升阳，固表止汗，利水消肿，生津养血"
+  },
+  {
+    "name": "西洋参",
+    "category": "补气药",
+    "efficacy": "补气养阴，清热生津"
+  },
+  {
+    "name": "扁豆",
+    "category": "补气药",
+    "efficacy": "健脾化湿，和中消暑"
+  },
+  {
+    "name": "莲子",
+    "category": "补气药",
+    "efficacy": "补脾止泻，固涩止带，益肾固精，养心安神"
+  },
+  {
+    "name": "芡实",
+    "category": "补气药",
+    "efficacy": "补脾止泻，益肾固精，除湿止带"
+  },
+  {
+    "name": "黄精",
+    "category": "补气药",
+    "efficacy": "补气养阴，健脾润肺，益肾"
+  },
+  {
+    "name": "灵芝",
+    "category": "安神药",
+    "efficacy": "补气安神，止咳平喘"
+  },
+  {
+    "name": "鹿茸",
+    "category": "补气药",
+    "efficacy": "壮肾阳，益精血，强筋骨，调冲任，托疮毒"
+  },
+  {
+    "name": "海参",
+    "category": "补气药",
+    "efficacy": "补肾益精，养血润燥，止血"
+  },
+  {
+    "name": "当归",
+    "category": "补血药",
+    "efficacy": "补血活血，调经止痛，润肠通便"
+  },
+  {
+    "name": "熟地黄",
+    "category": "补血药",
+    "efficacy": "补血滋阴，益精填髓"
+  },
+  {
+    "name": "白芍",
+    "category": "补血药",
+    "efficacy": "养血调经，柔肝止痛，敛阴止汗"
+  },
+  {
+    "name": "阿胶",
+    "category": "补血药",
+    "efficacy": "补血止血，滋阴润燥"
+  },
+  {
+    "name": "何首乌",
+    "category": "补血药",
+    "efficacy": "补肝肾，益精血，乌须发，强筋骨"
+  },
+  {
+    "name": "龙眼肉",
+    "category": "补血药",
+    "efficacy": "补益心脾，养血安神"
+  },
+  {
+    "name": "枸杞子",
+    "category": "补阴药",
+    "efficacy": "滋补肝肾，益精明目"
+  },
+  {
+    "name": "桑椹",
+    "category": "补阴药",
+    "efficacy": "滋阴补血，生津润燥"
+  },
+  {
+    "name": "黑芝麻",
+    "category": "补血药",
+    "efficacy": "补肝肾，益精血，润肠燥"
+  },
+  {
+    "name": "红枣",
+    "category": "补血药",
+    "efficacy": "补中益气，养血安神"
+  },
+  {
+    "name": "鸡血藤",
+    "category": "补血药",
+    "efficacy": "活血补血，调经止痛，舒筋活络"
+  },
+  {
+    "name": "乌鸡",
+    "category": "补血药",
+    "efficacy": "补肝肾，益气血，清虚热"
+  },
+  {
+    "name": "猪肝",
+    "category": "补血药",
+    "efficacy": "养血，补肝，明目"
+  },
+  {
+    "name": "菠菜",
+    "category": "补血药",
+    "efficacy": "养血，止血，润燥"
+  },
+  {
+    "name": "桂圆",
+    "category": "补血药",
+    "efficacy": "补益心脾，养血安神"
+  },
+  {
+    "name": "鹿角",
+    "category": "补阳药",
+    "efficacy": "温肾阳，强筋骨，活血消肿"
+  },
+  {
+    "name": "鹿角胶",
+    "category": "补阳药",
+    "efficacy": "温补肝肾，益精养血"
+  },
+  {
+    "name": "鹿角霜",
+    "category": "补阳药",
+    "efficacy": "温肾助阳，收敛止血"
+  },
+  {
+    "name": "巴戟天",
+    "category": "补阳药",
+    "efficacy": "补肾阳，强筋骨，祛风湿"
+  },
+  {
+    "name": "淫羊藿",
+    "category": "补阳药",
+    "efficacy": "补肾阳，强筋骨，祛风湿"
+  },
+  {
+    "name": "仙茅",
+    "category": "补阳药",
+    "efficacy": "补肾阳，强筋骨，祛寒湿"
+  },
+  {
+    "name": "杜仲",
+    "category": "补阳药",
+    "efficacy": "补肝肾，强筋骨，安胎"
+  },
+  {
+    "name": "续断",
+    "category": "补阳药",
+    "efficacy": "补肝肾，强筋骨，续折伤，止崩漏"
+  },
+  {
+    "name": "肉苁蓉",
+    "category": "补阳药",
+    "efficacy": "补肾阳，益精血，润肠通便"
+  },
+  {
+    "name": "锁阳",
+    "category": "补阳药",
+    "efficacy": "补肾阳，益精血，润肠通便"
+  },
+  {
+    "name": "补骨脂",
+    "category": "补阳药",
+    "efficacy": "温肾助阳，纳气平喘，温脾止泻"
+  },
+  {
+    "name": "益智",
+    "category": "补阳药",
+    "efficacy": "暖肾固精缩尿，温脾开胃摄唾"
+  },
+  {
+    "name": "菟丝子",
+    "category": "补阳药",
+    "efficacy": "补益肝肾，固精缩尿，安胎，明目，止泻"
+  },
+  {
+    "name": "沙苑子",
+    "category": "补阳药",
+    "efficacy": "补肾助阳，固精缩尿，养肝明目"
+  },
+  {
+    "name": "蛤蚧",
+    "category": "补阳药",
+    "efficacy": "补肺益肾，纳气平喘，助阳益精"
+  },
+  {
+    "name": "冬虫夏草",
+    "category": "补阳药",
+    "efficacy": "补肾益肺，止血化痰"
+  },
+  {
+    "name": "核桃仁",
+    "category": "补阳药",
+    "efficacy": "补肾，温肺，润肠"
+  },
+  {
+    "name": "海马",
+    "category": "补阳药",
+    "efficacy": "温肾壮阳，散结消肿"
+  },
+  {
+    "name": "韭菜子",
+    "category": "补阳药",
+    "efficacy": "温补肝肾，壮阳固精"
+  },
+  {
+    "name": "阳起石",
+    "category": "补阳药",
+    "efficacy": "温肾壮阳"
+  },
+  {
+    "name": "紫石英",
+    "category": "补阳药",
+    "efficacy": "温肾暖宫，镇心安神，温肺平喘"
+  },
+  {
+    "name": "北沙参",
+    "category": "补阴药",
+    "efficacy": "养阴清肺，益胃生津"
+  },
+  {
+    "name": "南沙参",
+    "category": "补阴药",
+    "efficacy": "养阴清肺，益胃生津，补气化痰"
+  },
+  {
+    "name": "麦冬",
+    "category": "补阴药",
+    "efficacy": "养阴润肺，益胃生津，清心除烦"
+  },
+  {
+    "name": "天冬",
+    "category": "补阴药",
+    "efficacy": "养阴润燥，清肺生津"
+  },
+  {
+    "name": "玉竹",
+    "category": "补阴药",
+    "efficacy": "养阴润燥，生津止渴"
+  },
+  {
+    "name": "石斛",
+    "category": "补阴药",
+    "efficacy": "益胃生津，滋阴清热"
+  },
+  {
+    "name": "百合",
+    "category": "补阴药",
+    "efficacy": "养阴润肺，清心安神"
+  },
+  {
+    "name": "墨旱莲",
+    "category": "补阴药",
+    "efficacy": "滋补肝肾，凉血止血"
+  },
+  {
+    "name": "女贞子",
+    "category": "补阴药",
+    "efficacy": "滋补肝肾，乌须明目"
+  },
+  {
+    "name": "龟甲",
+    "category": "补阴药",
+    "efficacy": "滋阴潜阳，益肾健骨，养血补心"
+  },
+  {
+    "name": "鳖甲",
+    "category": "补阴药",
+    "efficacy": "滋阴潜阳，退热除蒸，软坚散结"
+  },
+  {
+    "name": "银耳",
+    "category": "补阴药",
+    "efficacy": "滋阴润肺，养胃生津"
+  },
+  {
+    "name": "燕窝",
+    "category": "补阴药",
+    "efficacy": "养阴润燥，益气补中"
+  },
+  {
+    "name": "乌梅",
+    "category": "补阴药",
+    "efficacy": "敛肺涩肠，生津安蛔"
+  },
+  {
+    "name": "五味子",
+    "category": "补阴药",
+    "efficacy": "收敛固涩，益气生津，补肾宁心"
+  },
+  {
+    "name": "山茱萸",
+    "category": "补阴药",
+    "efficacy": "补益肝肾，收敛固涩"
+  },
+  {
+    "name": "沙参",
+    "category": "补阴药",
+    "efficacy": "养阴清热，润肺化痰，益胃生津"
+  },
+  {
+    "name": "枫斗",
+    "category": "补阴药",
+    "efficacy": "益胃生津，滋阴清热"
+  },
+  {
+    "name": "芦根",
+    "category": "补阴药",
+    "efficacy": "清热泻火，生津止渴，除烦，止呕，利尿"
+  },
+  {
+    "name": "金银花",
+    "category": "清热药",
+    "efficacy": "清热解毒，疏散风热"
+  },
+  {
+    "name": "连翘",
+    "category": "清热药",
+    "efficacy": "清热解毒，消肿散结，疏散风热"
+  },
+  {
+    "name": "蒲公英",
+    "category": "清热药",
+    "efficacy": "清热解毒，消肿散结，利尿通淋"
+  },
+  {
+    "name": "紫花地丁",
+    "category": "清热药",
+    "efficacy": "清热解毒，凉血消肿"
+  },
+  {
+    "name": "野菊花",
+    "category": "清热药",
+    "efficacy": "清热解毒，泻火平肝"
+  },
+  {
+    "name": "板蓝根",
+    "category": "清热药",
+    "efficacy": "清热解毒，凉血利咽"
+  },
+  {
+    "name": "大青叶",
+    "category": "清热药",
+    "efficacy": "清热解毒，凉血消斑"
+  },
+  {
+    "name": "青黛",
+    "category": "清热药",
+    "efficacy": "清热解毒，凉血消斑，清肝泻火"
+  },
+  {
+    "name": "牛黄",
+    "category": "清热药",
+    "efficacy": "清心，豁痰，开窍，凉肝，息风，解毒"
+  },
+  {
+    "name": "鱼腥草",
+    "category": "清热药",
+    "efficacy": "清热解毒，消痈排脓，利尿通淋"
+  },
+  {
+    "name": "败酱草",
+    "category": "清热药",
+    "efficacy": "清热解毒，消痈排脓，祛瘀止痛"
+  },
+  {
+    "name": "射干",
+    "category": "清热药",
+    "efficacy": "清热解毒，消痰，利咽"
+  },
+  {
+    "name": "山豆根",
+    "category": "清热药",
+    "efficacy": "清热解毒，消肿利咽"
+  },
+  {
+    "name": "马勃",
+    "category": "清热药",
+    "efficacy": "清肺利咽，止血"
+  },
+  {
+    "name": "白头翁",
+    "category": "清热药",
+    "efficacy": "清热解毒，凉血止痢"
+  },
+  {
+    "name": "马齿苋",
+    "category": "清热药",
+    "efficacy": "清热解毒，凉血止血，止痢"
+  },
+  {
+    "name": "鸦胆子",
+    "category": "清热药",
+    "efficacy": "清热解毒，截疟，止痢，腐蚀赘疣"
+  },
+  {
+    "name": "半枝莲",
+    "category": "清热药",
+    "efficacy": "清热解毒，散瘀止血，利水消肿"
+  },
+  {
+    "name": "白花蛇舌草",
+    "category": "清热药",
+    "efficacy": "清热解毒，利湿通淋"
+  },
+  {
+    "name": "土茯苓",
+    "category": "清热药",
+    "efficacy": "解毒，除湿，通利关节"
+  },
+  {
+    "name": "茯苓",
+    "category": "利水渗湿药",
+    "efficacy": "利水渗湿，健脾宁心"
+  },
+  {
+    "name": "知母",
+    "category": "清热药",
+    "efficacy": "清热泻火，滋阴润燥"
+  },
+  {
+    "name": "栀子",
+    "category": "清热药",
+    "efficacy": "泻火除烦，清热利湿，凉血解毒"
+  },
+  {
+    "name": "夏枯草",
+    "category": "清热药",
+    "efficacy": "清肝泻火，明目，散结消肿"
+  },
+  {
+    "name": "天花粉",
+    "category": "清热药",
+    "efficacy": "清热泻火，生津止渴，消肿排脓"
+  },
+  {
+    "name": "淡竹叶",
+    "category": "清热药",
+    "efficacy": "清热泻火，除烦止渴，利尿通淋"
+  },
+  {
+    "name": "决明子",
+    "category": "清热药",
+    "efficacy": "清热明目，润肠通便"
+  },
+  {
+    "name": "密蒙花",
+    "category": "清热药",
+    "efficacy": "清热泻火，养肝明目，退翳"
+  },
+  {
+    "name": "青箱子",
+    "category": "清热药",
+    "efficacy": "清肝泻火，明目退翳"
+  },
+  {
+    "name": "黄连",
+    "category": "清热药",
+    "efficacy": "清热燥湿，泻火解毒"
+  },
+  {
+    "name": "黄芩",
+    "category": "清热药",
+    "efficacy": "清热燥湿，泻火解毒，止血，安胎"
+  },
+  {
+    "name": "黄柏",
+    "category": "清热药",
+    "efficacy": "清热燥湿，泻火解毒，除骨蒸"
+  },
+  {
+    "name": "龙胆",
+    "category": "清热药",
+    "efficacy": "清热燥湿，泻肝胆火"
+  },
+  {
+    "name": "苦参",
+    "category": "清热药",
+    "efficacy": "清热燥湿，杀虫止痒，利尿"
+  },
+  {
+    "name": "白鲜皮",
+    "category": "清热药",
+    "efficacy": "清热燥湿，祛风解毒"
+  },
+  {
+    "name": "秦皮",
+    "category": "清热药",
+    "efficacy": "清热燥湿，收涩止痢，止带，明目"
+  },
+  {
+    "name": "穿心莲",
+    "category": "清热药",
+    "efficacy": "清热解毒，凉血消肿，燥湿"
+  },
+  {
+    "name": "大血藤",
+    "category": "清热药",
+    "efficacy": "清热解毒，活血，祛风止痛"
+  },
+  {
+    "name": "绿豆",
+    "category": "清热药",
+    "efficacy": "清热解毒，消暑，利水"
+  },
+  {
+    "name": "荷叶",
+    "category": "清热药",
+    "efficacy": "清暑化湿，升发清阳，凉血止血"
+  },
+  {
+    "name": "西瓜皮",
+    "category": "清热药",
+    "efficacy": "清暑解热，止渴，利小便"
+  },
+  {
+    "name": "莲子心",
+    "category": "清热药",
+    "efficacy": "清心安神，交通心肾，涩精止血"
+  },
+  {
+    "name": "麻黄",
+    "category": "解表药",
+    "efficacy": "发汗解表，宣肺平喘，利水消肿"
+  },
+  {
+    "name": "桂枝",
+    "category": "解表药",
+    "efficacy": "发汗解肌，温通经脉，助阳化气"
+  },
+  {
+    "name": "紫苏叶",
+    "category": "解表药",
+    "efficacy": "解表散寒，行气和胃"
+  },
+  {
+    "name": "生姜",
+    "category": "解表药",
+    "efficacy": "解表散寒，温中止呕，温肺止咳"
+  },
+  {
+    "name": "香薷",
+    "category": "解表药",
+    "efficacy": "发汗解表，化湿和中，利水消肿"
+  },
+  {
+    "name": "荆芥",
+    "category": "解表药",
+    "efficacy": "解表散风，透疹，消疮"
+  },
+  {
+    "name": "防风",
+    "category": "解表药",
+    "efficacy": "祛风解表，胜湿止痛，止痉"
+  },
+  {
+    "name": "羌活",
+    "category": "解表药",
+    "efficacy": "解表散寒，祛风胜湿，止痛"
+  },
+  {
+    "name": "白芷",
+    "category": "解表药",
+    "efficacy": "解表散寒，祛风止痛，通鼻窍，消肿排脓"
+  },
+  {
+    "name": "细辛",
+    "category": "解表药",
+    "efficacy": "解表散寒，祛风止痛，通窍，温肺化饮"
+  },
+  {
+    "name": "苍耳子",
+    "category": "解表药",
+    "efficacy": "散风寒，通鼻窍，祛风湿，止痛"
+  },
+  {
+    "name": "辛夷",
+    "category": "解表药",
+    "efficacy": "散风寒，通鼻窍"
+  },
+  {
+    "name": "葱白",
+    "category": "解表药",
+    "efficacy": "发汗解表，散寒通阳"
+  },
+  {
+    "name": "胡荽",
+    "category": "解表药",
+    "efficacy": "发表透疹，开胃消食"
+  },
+  {
+    "name": "柽柳",
+    "category": "解表药",
+    "efficacy": "发表透疹，祛风除湿"
+  },
+  {
+    "name": "薄荷",
+    "category": "解表药",
+    "efficacy": "疏散风热，清利头目，利咽，透疹"
+  },
+  {
+    "name": "牛蒡子",
+    "category": "解表药",
+    "efficacy": "疏散风热，宣肺透疹，利咽散结，解毒消肿"
+  },
+  {
+    "name": "蝉蜕",
+    "category": "解表药",
+    "efficacy": "疏散风热，利咽开音，透疹，明目退翳，息风止痉"
+  },
+  {
+    "name": "桑叶",
+    "category": "解表药",
+    "efficacy": "疏散风热，清肺润燥，清肝明目"
+  },
+  {
+    "name": "菊花",
+    "category": "清热药",
+    "efficacy": "散风清热，平肝明目，清热解毒"
+  },
+  {
+    "name": "葛根",
+    "category": "解表药",
+    "efficacy": "解肌退热，生津止渴，升阳止泻"
+  },
+  {
+    "name": "柴胡",
+    "category": "解表药",
+    "efficacy": "疏散退热，疏肝解郁，升举阳气"
+  },
+  {
+    "name": "升麻",
+    "category": "解表药",
+    "efficacy": "发表透疹，清热解毒，升举阳气"
+  },
+  {
+    "name": "蔓荆子",
+    "category": "解表药",
+    "efficacy": "疏散风热，清利头目"
+  },
+  {
+    "name": "浮萍",
+    "category": "解表药",
+    "efficacy": "宣散风热，透疹，利尿"
+  },
+  {
+    "name": "木贼",
+    "category": "解表药",
+    "efficacy": "疏散风热，明目退翳"
+  },
+  {
+    "name": "淡豆豉",
+    "category": "解表药",
+    "efficacy": "解表，除烦，宣发郁热"
+  },
+  {
+    "name": "大豆黄卷",
+    "category": "解表药",
+    "efficacy": "解表祛暑，清热利湿"
+  },
+  {
+    "name": "半夏",
+    "category": "化痰止咳平喘药",
+    "efficacy": "燥湿化痰，降逆止呕，消痞散结"
+  },
+  {
+    "name": "天南星",
+    "category": "化痰止咳平喘药",
+    "efficacy": "燥湿化痰，祛风解痉，散结消肿"
+  },
+  {
+    "name": "白附子",
+    "category": "化痰止咳平喘药",
+    "efficacy": "祛风痰，定惊搐，解毒散结，止痛"
+  },
+  {
+    "name": "白芥子",
+    "category": "化痰止咳平喘药",
+    "efficacy": "温肺化痰，利气散结，通络止痛"
+  },
+  {
+    "name": "旋覆花",
+    "category": "化痰止咳平喘药",
+    "efficacy": "降气，消痰，行水，止呕"
+  },
+  {
+    "name": "白前",
+    "category": "化痰止咳平喘药",
+    "efficacy": "降气，消痰，止咳"
+  },
+  {
+    "name": "前胡",
+    "category": "化痰止咳平喘药",
+    "efficacy": "降气化痰，疏散风热"
+  },
+  {
+    "name": "桔梗",
+    "category": "化痰止咳平喘药",
+    "efficacy": "宣肺，利咽，祛痰，排脓"
+  },
+  {
+    "name": "川贝母",
+    "category": "化痰止咳平喘药",
+    "efficacy": "清热润肺，化痰止咳，散结消痈"
+  },
+  {
+    "name": "浙贝母",
+    "category": "化痰止咳平喘药",
+    "efficacy": "清热化痰止咳，解毒散结消痈"
+  },
+  {
+    "name": "平贝母",
+    "category": "化痰止咳平喘药",
+    "efficacy": "清热润肺，化痰止咳"
+  },
+  {
+    "name": "伊贝母",
+    "category": "化痰止咳平喘药",
+    "efficacy": "清热润肺，化痰止咳"
+  },
+  {
+    "name": "瓜蒌",
+    "category": "化痰止咳平喘药",
+    "efficacy": "清热涤痰，宽胸散结，润燥滑肠"
+  },
+  {
+    "name": "瓜蒌皮",
+    "category": "化痰止咳平喘药",
+    "efficacy": "清热化痰，利气宽胸"
+  },
+  {
+    "name": "瓜蒌子",
+    "category": "化痰止咳平喘药",
+    "efficacy": "润肺化痰，滑肠通便"
+  },
+  {
+    "name": "瓜蒌仁",
+    "category": "化痰止咳平喘药",
+    "efficacy": "润肺化痰，滑肠通便"
+  },
+  {
+    "name": "竹茹",
+    "category": "化痰止咳平喘药",
+    "efficacy": "清热化痰，除烦止呕"
+  },
+  {
+    "name": "竹沥",
+    "category": "化痰止咳平喘药",
+    "efficacy": "清热豁痰，定惊利窍"
+  },
+  {
+    "name": "天竺黄",
+    "category": "化痰止咳平喘药",
+    "efficacy": "清热豁痰，清心定惊"
+  },
+  {
+    "name": "胆南星",
+    "category": "化痰止咳平喘药",
+    "efficacy": "清热化痰，息风定惊"
+  },
+  {
+    "name": "礞石",
+    "category": "化痰止咳平喘药",
+    "efficacy": "坠痰下气，平肝镇惊"
+  },
+  {
+    "name": "海藻",
+    "category": "化痰止咳平喘药",
+    "efficacy": "消痰软坚散结，利水消肿"
+  },
+  {
+    "name": "昆布",
+    "category": "化痰止咳平喘药",
+    "efficacy": "消痰软坚散结，利水消肿"
+  },
+  {
+    "name": "海带",
+    "category": "化痰止咳平喘药",
+    "efficacy": "消痰软坚，利水退肿"
+  },
+  {
+    "name": "黄药子",
+    "category": "化痰止咳平喘药",
+    "efficacy": "化痰散结消瘿，清热解毒，凉血止血"
+  },
+  {
+    "name": "海蛤壳",
+    "category": "化痰止咳平喘药",
+    "efficacy": "清肺化痰，软坚散结"
+  },
+  {
+    "name": "浮海石",
+    "category": "化痰止咳平喘药",
+    "efficacy": "清热化痰，软坚散结，利尿通淋"
+  },
+  {
+    "name": "瓦楞子",
+    "category": "化痰止咳平喘药",
+    "efficacy": "消痰化瘀，软坚散结，制酸止痛"
+  },
+  {
+    "name": "海螺",
+    "category": "化痰止咳平喘药",
+    "efficacy": "清热化痰，软坚散结"
+  },
+  {
+    "name": "百部",
+    "category": "化痰止咳平喘药",
+    "efficacy": "润肺下气止咳，杀虫灭虱"
+  },
+  {
+    "name": "紫菀",
+    "category": "化痰止咳平喘药",
+    "efficacy": "润肺下气，消痰止咳"
+  },
+  {
+    "name": "款冬花",
+    "category": "化痰止咳平喘药",
+    "efficacy": "润肺下气，止咳化痰"
+  },
+  {
+    "name": "马兜铃",
+    "category": "化痰止咳平喘药",
+    "efficacy": "清肺降气，止咳平喘，清肠消痔"
+  },
+  {
+    "name": "枇杷叶",
+    "category": "化痰止咳平喘药",
+    "efficacy": "清肺止咳，降逆止呕"
+  },
+  {
+    "name": "桑白皮",
+    "category": "化痰止咳平喘药",
+    "efficacy": "泻肺平喘，利水消肿"
+  },
+  {
+    "name": "葶苈子",
+    "category": "化痰止咳平喘药",
+    "efficacy": "泻肺平喘，利水消肿"
+  },
+  {
+    "name": "银杏",
+    "category": "化痰止咳平喘药",
+    "efficacy": "敛肺定喘，止带缩尿"
+  },
+  {
+    "name": "洋金花",
+    "category": "化痰止咳平喘药",
+    "efficacy": "平喘止咳，解痉定痛"
+  },
+  {
+    "name": "矮地茶",
+    "category": "化痰止咳平喘药",
+    "efficacy": "化痰止咳，清利湿热，活血化瘀"
+  },
+  {
+    "name": "罗汉果",
+    "category": "化痰止咳平喘药",
+    "efficacy": "清热润肺，利咽开音，滑肠通便"
+  },
+  {
+    "name": "满山红",
+    "category": "化痰止咳平喘药",
+    "efficacy": "止咳祛痰"
+  },
+  {
+    "name": "胡颓子叶",
+    "category": "化痰止咳平喘药",
+    "efficacy": "止咳平喘，降逆止血"
+  },
+  {
+    "name": "华山参",
+    "category": "化痰止咳平喘药",
+    "efficacy": "温肺平喘，止咳祛痰"
+  },
+  {
+    "name": "白果",
+    "category": "化痰止咳平喘药",
+    "efficacy": "敛肺定喘，止带缩尿"
+  },
+  {
+    "name": "银杏叶",
+    "category": "化痰止咳平喘药",
+    "efficacy": "活血化瘀，通络止痛，敛肺平喘"
+  },
+  {
+    "name": "陈皮",
+    "category": "理气药",
+    "efficacy": "理气健脾，燥湿化痰"
+  },
+  {
+    "name": "青皮",
+    "category": "理气药",
+    "efficacy": "疏肝破气，消积化滞"
+  },
+  {
+    "name": "枳实",
+    "category": "理气药",
+    "efficacy": "破气消积，化痰散痞"
+  },
+  {
+    "name": "枳壳",
+    "category": "理气药",
+    "efficacy": "理气宽中，行滞消胀"
+  },
+  {
+    "name": "木香",
+    "category": "理气药",
+    "efficacy": "行气止痛，健脾消食"
+  },
+  {
+    "name": "沉香",
+    "category": "理气药",
+    "efficacy": "行气止痛，温中止呕，纳气平喘"
+  },
+  {
+    "name": "檀香",
+    "category": "理气药",
+    "efficacy": "行气止痛，散寒调中"
+  },
+  {
+    "name": "川木香",
+    "category": "理气药",
+    "efficacy": "行气止痛"
+  },
+  {
+    "name": "香附",
+    "category": "理气药",
+    "efficacy": "疏肝解郁，理气宽中，调经止痛"
+  },
+  {
+    "name": "乌药",
+    "category": "理气药",
+    "efficacy": "行气止痛，温肾散寒"
+  },
+  {
+    "name": "荔枝核",
+    "category": "理气药",
+    "efficacy": "行气散结，祛寒止痛"
+  },
+  {
+    "name": "香橼",
+    "category": "理气药",
+    "efficacy": "疏肝理气，宽中，化痰"
+  },
+  {
+    "name": "佛手",
+    "category": "理气药",
+    "efficacy": "疏肝理气，和胃止痛，燥湿化痰"
+  },
+  {
+    "name": "玫瑰花",
+    "category": "理气药",
+    "efficacy": "行气解郁，和血，止痛"
+  },
+  {
+    "name": "绿萼梅",
+    "category": "理气药",
+    "efficacy": "疏肝和胃，化痰解毒"
+  },
+  {
+    "name": "娑罗子",
+    "category": "理气药",
+    "efficacy": "疏肝理气，宽中和胃，止痛"
+  },
+  {
+    "name": "天仙藤",
+    "category": "理气药",
+    "efficacy": "理气祛湿，活血止痛"
+  },
+  {
+    "name": "大腹皮",
+    "category": "理气药",
+    "efficacy": "行气宽中，行水消肿"
+  },
+  {
+    "name": "甘松",
+    "category": "理气药",
+    "efficacy": "理气止痛，开郁醒脾，外祛湿"
+  },
+  {
+    "name": "九香虫",
+    "category": "理气药",
+    "efficacy": "理气止痛，温中助阳"
+  },
+  {
+    "name": "刀豆",
+    "category": "理气药",
+    "efficacy": "温中，下气，止呃"
+  },
+  {
+    "name": "柿蒂",
+    "category": "理气药",
+    "efficacy": "降逆止呃"
+  },
+  {
+    "name": "梅花",
+    "category": "理气药",
+    "efficacy": "疏肝和中，化痰散结"
+  },
+  {
+    "name": "橘红",
+    "category": "理气药",
+    "efficacy": "理气宽中，燥湿化痰"
+  },
+  {
+    "name": "橘核",
+    "category": "理气药",
+    "efficacy": "理气散结，止痛"
+  },
+  {
+    "name": "橘络",
+    "category": "理气药",
+    "efficacy": "行气通络，化痰止咳"
+  },
+  {
+    "name": "橘叶",
+    "category": "理气药",
+    "efficacy": "疏肝行气，散结消肿"
+  },
+  {
+    "name": "化橘红",
+    "category": "理气药",
+    "efficacy": "理气宽中，燥湿化痰"
+  },
+  {
+    "name": "川芎",
+    "category": "活血化瘀药",
+    "efficacy": "活血行气，祛风止痛"
+  },
+  {
+    "name": "延胡索",
+    "category": "活血化瘀药",
+    "efficacy": "活血，行气，止痛"
+  },
+  {
+    "name": "郁金",
+    "category": "活血化瘀药",
+    "efficacy": "活血止痛，行气解郁，清心凉血，利胆退黄"
+  },
+  {
+    "name": "姜黄",
+    "category": "活血化瘀药",
+    "efficacy": "破血行气，通经止痛"
+  },
+  {
+    "name": "乳香",
+    "category": "活血化瘀药",
+    "efficacy": "活血止痛，消肿生肌"
+  },
+  {
+    "name": "没药",
+    "category": "活血化瘀药",
+    "efficacy": "活血止痛，消肿生肌"
+  },
+  {
+    "name": "五灵脂",
+    "category": "活血化瘀药",
+    "efficacy": "活血止痛，化瘀止血，解蛇虫毒"
+  },
+  {
+    "name": "降香",
+    "category": "活血化瘀药",
+    "efficacy": "化瘀止血，理气止痛"
+  },
+  {
+    "name": "丹参",
+    "category": "活血化瘀药",
+    "efficacy": "活血祛瘀，通经止痛，清心除烦"
+  },
+  {
+    "name": "红花",
+    "category": "活血化瘀药",
+    "efficacy": "活血通经，散瘀止痛"
+  },
+  {
+    "name": "西红花",
+    "category": "活血化瘀药",
+    "efficacy": "活血化瘀，凉血解毒，解郁安神"
+  },
+  {
+    "name": "桃仁",
+    "category": "活血化瘀药",
+    "efficacy": "活血祛瘀，润肠通便，止咳平喘"
+  },
+  {
+    "name": "益母草",
+    "category": "活血化瘀药",
+    "efficacy": "活血调经，利尿消肿，清热解毒"
+  },
+  {
+    "name": "泽兰",
+    "category": "活血化瘀药",
+    "efficacy": "活血调经，祛瘀消痈，利水消肿"
+  },
+  {
+    "name": "牛膝",
+    "category": "活血化瘀药",
+    "efficacy": "逐瘀通经，补肝肾，强筋骨，利尿通淋"
+  },
+  {
+    "name": "川牛膝",
+    "category": "活血化瘀药",
+    "efficacy": "逐瘀通经，通利关节，利尿通淋"
+  },
+  {
+    "name": "怀牛膝",
+    "category": "活血化瘀药",
+    "efficacy": "活血祛瘀，补肝肾，强筋骨，利尿通淋，引血下行"
+  },
+  {
+    "name": "王不留行",
+    "category": "活血化瘀药",
+    "efficacy": "活血通经，下乳消肿，利尿通淋"
+  },
+  {
+    "name": "月季花",
+    "category": "活血化瘀药",
+    "efficacy": "活血调经，疏肝解郁"
+  },
+  {
+    "name": "凌霄花",
+    "category": "活血化瘀药",
+    "efficacy": "破瘀通经，凉血祛风"
+  },
+  {
+    "name": "凤仙花",
+    "category": "活血化瘀药",
+    "efficacy": "破血通经，祛风止痛，解毒"
+  },
+  {
+    "name": "土鳖虫",
+    "category": "活血化瘀药",
+    "efficacy": "破血逐瘀，续筋接骨"
+  },
+  {
+    "name": "马钱子",
+    "category": "活血化瘀药",
+    "efficacy": "通络止痛，散结消肿"
+  },
+  {
+    "name": "自然铜",
+    "category": "活血化瘀药",
+    "efficacy": "散瘀止痛，续筋接骨"
+  },
+  {
+    "name": "苏木",
+    "category": "活血化瘀药",
+    "efficacy": "活血祛瘀，消肿止痛"
+  },
+  {
+    "name": "骨碎补",
+    "category": "活血化瘀药",
+    "efficacy": "活血疗伤，补肾强骨"
+  },
+  {
+    "name": "血竭",
+    "category": "活血化瘀药",
+    "efficacy": "活血定痛，化瘀止血，生肌敛疮"
+  },
+  {
+    "name": "儿茶",
+    "category": "活血化瘀药",
+    "efficacy": "活血止痛，止血生肌，收湿敛疮，清肺化痰"
+  },
+  {
+    "name": "刘寄奴",
+    "category": "活血化瘀药",
+    "efficacy": "破血通经，散瘀止痛，止血消肿"
+  },
+  {
+    "name": "三棱",
+    "category": "活血化瘀药",
+    "efficacy": "破血行气，消积止痛"
+  },
+  {
+    "name": "莪术",
+    "category": "活血化瘀药",
+    "efficacy": "破血行气，消积止痛"
+  },
+  {
+    "name": "水蛭",
+    "category": "活血化瘀药",
+    "efficacy": "破血通经，逐瘀消癥"
+  },
+  {
+    "name": "虻虫",
+    "category": "活血化瘀药",
+    "efficacy": "破血逐瘀，消癥散积"
+  },
+  {
+    "name": "斑蝥",
+    "category": "活血化瘀药",
+    "efficacy": "破血逐瘀，散结消癥，攻毒蚀疮"
+  },
+  {
+    "name": "穿山甲",
+    "category": "活血化瘀药",
+    "efficacy": "活血消癥，通经下乳，消肿排脓，搜风通络"
+  },
+  {
+    "name": "小蓟",
+    "category": "止血药",
+    "efficacy": "凉血止血，散瘀解毒消痈"
+  },
+  {
+    "name": "大蓟",
+    "category": "止血药",
+    "efficacy": "凉血止血，散瘀解毒消痈"
+  },
+  {
+    "name": "地榆",
+    "category": "止血药",
+    "efficacy": "凉血止血，解毒敛疮"
+  },
+  {
+    "name": "槐花",
+    "category": "止血药",
+    "efficacy": "凉血止血，清肝泻火"
+  },
+  {
+    "name": "侧柏叶",
+    "category": "止血药",
+    "efficacy": "凉血止血，化痰止咳，生发乌发"
+  },
+  {
+    "name": "白茅根",
+    "category": "止血药",
+    "efficacy": "凉血止血，清热利尿"
+  },
+  {
+    "name": "苎麻根",
+    "category": "止血药",
+    "efficacy": "凉血止血，安胎，清热解毒"
+  },
+  {
+    "name": "羊蹄",
+    "category": "止血药",
+    "efficacy": "凉血止血，解毒杀虫，泻下"
+  },
+  {
+    "name": "三七",
+    "category": "止血药",
+    "efficacy": "散瘀止血，消肿定痛"
+  },
+  {
+    "name": "茜草",
+    "category": "止血药",
+    "efficacy": "凉血止血，活血祛瘀"
+  },
+  {
+    "name": "蒲黄",
+    "category": "止血药",
+    "efficacy": "止血，化瘀，利尿"
+  },
+  {
+    "name": "花蕊石",
+    "category": "止血药",
+    "efficacy": "化瘀止血"
+  },
+  {
+    "name": "白及",
+    "category": "止血药",
+    "efficacy": "收敛止血，消肿生肌"
+  },
+  {
+    "name": "仙鹤草",
+    "category": "止血药",
+    "efficacy": "收敛止血，止痢，截疟，补虚"
+  },
+  {
+    "name": "紫珠叶",
+    "category": "止血药",
+    "efficacy": "收敛止血，清热解毒"
+  },
+  {
+    "name": "棕榈炭",
+    "category": "止血药",
+    "efficacy": "收敛止血"
+  },
+  {
+    "name": "血余炭",
+    "category": "止血药",
+    "efficacy": "收敛止血，化瘀，利尿"
+  },
+  {
+    "name": "藕节",
+    "category": "止血药",
+    "efficacy": "收敛止血"
+  },
+  {
+    "name": "鸡冠花",
+    "category": "止血药",
+    "efficacy": "收敛止血，止带，止痢"
+  },
+  {
+    "name": "花生衣",
+    "category": "止血药",
+    "efficacy": "止血，散瘀消肿"
+  },
+  {
+    "name": "艾叶",
+    "category": "止血药",
+    "efficacy": "温经止血，散寒止痛，调经，安胎"
+  },
+  {
+    "name": "炮姜",
+    "category": "止血药",
+    "efficacy": "温经止血，温中止痛"
+  },
+  {
+    "name": "灶心土",
+    "category": "止血药",
+    "efficacy": "温中止血，止呕，止泻"
+  },
+  {
+    "name": "木耳",
+    "category": "止血药",
+    "efficacy": "活血止血，补气养血"
+  },
+  {
+    "name": "槐角",
+    "category": "止血药",
+    "efficacy": "清热泻火，凉血止血"
+  },
+  {
+    "name": "断血流",
+    "category": "止血药",
+    "efficacy": "收敛止血"
+  },
+  {
+    "name": "水牛角",
+    "category": "止血药",
+    "efficacy": "清热凉血，解毒，定惊"
+  },
+  {
+    "name": "薏苡仁",
+    "category": "利水渗湿药",
+    "efficacy": "利水渗湿，健脾止泻，除痹，排脓"
+  },
+  {
+    "name": "猪苓",
+    "category": "利水渗湿药",
+    "efficacy": "利水渗湿"
+  },
+  {
+    "name": "泽泻",
+    "category": "利水渗湿药",
+    "efficacy": "利水渗湿，泄热"
+  },
+  {
+    "name": "冬瓜皮",
+    "category": "利水渗湿药",
+    "efficacy": "利尿消肿，清热解暑"
+  },
+  {
+    "name": "玉米须",
+    "category": "利水渗湿药",
+    "efficacy": "利水消肿，利湿退黄"
+  },
+  {
+    "name": "葫芦",
+    "category": "利水渗湿药",
+    "efficacy": "利水消肿"
+  },
+  {
+    "name": "香加皮",
+    "category": "利水渗湿药",
+    "efficacy": "利水消肿，祛风湿，强筋骨"
+  },
+  {
+    "name": "枳椇子",
+    "category": "利水渗湿药",
+    "efficacy": "利水消肿，解酒毒"
+  },
+  {
+    "name": "泽漆",
+    "category": "利水渗湿药",
+    "efficacy": "利水消肿，化痰止咳，解毒散结"
+  },
+  {
+    "name": "蝼蛄",
+    "category": "利水渗湿药",
+    "efficacy": "利水消肿，通淋"
+  },
+  {
+    "name": "荠菜",
+    "category": "利水渗湿药",
+    "efficacy": "利水消肿，清肝明目，凉血止血"
+  },
+  {
+    "name": "车前子",
+    "category": "利水渗湿药",
+    "efficacy": "清热利尿通淋，渗湿止泻，明目，祛痰"
+  },
+  {
+    "name": "车前草",
+    "category": "利水渗湿药",
+    "efficacy": "清热利尿通淋，祛痰，凉血，解毒"
+  },
+  {
+    "name": "滑石",
+    "category": "利水渗湿药",
+    "efficacy": "利尿通淋，清热解暑，收湿敛疮"
+  },
+  {
+    "name": "木通",
+    "category": "利水渗湿药",
+    "efficacy": "利尿通淋，清心火，通经下乳"
+  },
+  {
+    "name": "通草",
+    "category": "利水渗湿药",
+    "efficacy": "清热利尿，通气下乳"
+  },
+  {
+    "name": "瞿麦",
+    "category": "利水渗湿药",
+    "efficacy": "利尿通淋，活血通经"
+  },
+  {
+    "name": "扁蓄",
+    "category": "利水渗湿药",
+    "efficacy": "利尿通淋，杀虫止痒"
+  },
+  {
+    "name": "地肤子",
+    "category": "利水渗湿药",
+    "efficacy": "清热利湿，祛风止痒"
+  },
+  {
+    "name": "海金沙",
+    "category": "利水渗湿药",
+    "efficacy": "清利湿热，通淋止痛"
+  },
+  {
+    "name": "石韦",
+    "category": "利水渗湿药",
+    "efficacy": "利尿通淋，清肺止咳，凉血止血"
+  },
+  {
+    "name": "冬葵子",
+    "category": "利水渗湿药",
+    "efficacy": "利尿通淋，滑肠，下乳"
+  },
+  {
+    "name": "灯心草",
+    "category": "利水渗湿药",
+    "efficacy": "利尿通淋，清心降火"
+  },
+  {
+    "name": "萆薢",
+    "category": "利水渗湿药",
+    "efficacy": "利湿去浊，祛风除痹"
+  },
+  {
+    "name": "茵陈",
+    "category": "利水渗湿药",
+    "efficacy": "清利湿热，利胆退黄"
+  },
+  {
+    "name": "金钱草",
+    "category": "利水渗湿药",
+    "efficacy": "利湿退黄，利尿通淋，解毒消肿"
+  },
+  {
+    "name": "虎杖",
+    "category": "利水渗湿药",
+    "efficacy": "利湿退黄，清热解毒，散瘀止痛，化痰止咳"
+  },
+  {
+    "name": "地耳草",
+    "category": "利水渗湿药",
+    "efficacy": "利湿退黄，清热解毒，活血消肿"
+  },
+  {
+    "name": "垂盆草",
+    "category": "利水渗湿药",
+    "efficacy": "利湿退黄，清热解毒"
+  },
+  {
+    "name": "鸡骨草",
+    "category": "利水渗湿药",
+    "efficacy": "利湿退黄，清热解毒，疏肝止痛"
+  },
+  {
+    "name": "珍珠草",
+    "category": "利水渗湿药",
+    "efficacy": "利湿退黄，清热解毒，明目，消积"
+  },
+  {
+    "name": "溪黄草",
+    "category": "利水渗湿药",
+    "efficacy": "清热利湿，退黄祛瘀，凉血解毒"
+  },
+  {
+    "name": "过路黄",
+    "category": "利水渗湿药",
+    "efficacy": "利湿退黄，利尿通淋，解毒消肿"
+  },
+  {
+    "name": "广金钱草",
+    "category": "利水渗湿药",
+    "efficacy": "清热利湿，利尿通淋"
+  },
+  {
+    "name": "连钱草",
+    "category": "利水渗湿药",
+    "efficacy": "利湿通淋，清热解毒，散瘀消肿"
+  },
+  {
+    "name": "山楂",
+    "category": "消食药",
+    "efficacy": "消食健胃，行气散瘀，化浊降脂"
+  },
+  {
+    "name": "神曲",
+    "category": "消食药",
+    "efficacy": "消食和胃"
+  },
+  {
+    "name": "麦芽",
+    "category": "消食药",
+    "efficacy": "行气消食，健脾开胃，回乳消胀"
+  },
+  {
+    "name": "稻芽",
+    "category": "消食药",
+    "efficacy": "消食和中，健脾开胃"
+  },
+  {
+    "name": "谷芽",
+    "category": "消食药",
+    "efficacy": "消食和中，健脾开胃"
+  },
+  {
+    "name": "莱菔子",
+    "category": "消食药",
+    "efficacy": "消食除胀，降气化痰"
+  },
+  {
+    "name": "鸡内金",
+    "category": "消食药",
+    "efficacy": "健胃消食，涩精止遗，通淋化石"
+  },
+  {
+    "name": "鸡矢藤",
+    "category": "消食药",
+    "efficacy": "消食健胃，化痰止咳，清热解毒，止痛"
+  },
+  {
+    "name": "隔山消",
+    "category": "消食药",
+    "efficacy": "消食健胃，理气止痛，涩精止遗"
+  },
+  {
+    "name": "阿魏",
+    "category": "消食药",
+    "efficacy": "消积，化癥，散痞，杀虫"
+  },
+  {
+    "name": "布渣叶",
+    "category": "消食药",
+    "efficacy": "消食化滞，清热利湿"
+  },
+  {
+    "name": "大麦",
+    "category": "消食药",
+    "efficacy": "健脾和胃，宽肠，化滞"
+  },
+  {
+    "name": "粟米",
+    "category": "消食药",
+    "efficacy": "和中益肾，除热解毒"
+  },
+  {
+    "name": "番薯",
+    "category": "消食药",
+    "efficacy": "补中和血，益气生津，宽肠胃"
+  },
+  {
+    "name": "魔芋",
+    "category": "消食药",
+    "efficacy": "化痰散积，行瘀消肿，解毒消痈"
+  },
+  {
+    "name": "附子",
+    "category": "温里药",
+    "efficacy": "回阳救逆，补火助阳，散寒止痛"
+  },
+  {
+    "name": "干姜",
+    "category": "温里药",
+    "efficacy": "温中散寒，回阳通脉，温肺化饮"
+  },
+  {
+    "name": "肉桂",
+    "category": "温里药",
+    "efficacy": "补火助阳，散寒止痛，温经通脉"
+  },
+  {
+    "name": "吴茱萸",
+    "category": "温里药",
+    "efficacy": "散寒止痛，降逆止呕，助阳止泻"
+  },
+  {
+    "name": "小茴香",
+    "category": "温里药",
+    "efficacy": "散寒止痛，理气和胃"
+  },
+  {
+    "name": "丁香",
+    "category": "温里药",
+    "efficacy": "温中降逆，散寒止痛，温肾助阳"
+  },
+  {
+    "name": "高良姜",
+    "category": "温里药",
+    "efficacy": "温胃止呕，散寒止痛"
+  },
+  {
+    "name": "花椒",
+    "category": "温里药",
+    "efficacy": "温中止痛，杀虫止痒"
+  },
+  {
+    "name": "胡椒",
+    "category": "温里药",
+    "efficacy": "温中散寒，下气消痰"
+  },
+  {
+    "name": "荜茇",
+    "category": "温里药",
+    "efficacy": "温中散寒，下气止痛"
+  },
+  {
+    "name": "荜澄茄",
+    "category": "温里药",
+    "efficacy": "温中散寒，行气止痛"
+  },
+  {
+    "name": "八角茴香",
+    "category": "温里药",
+    "efficacy": "温阳散寒，理气止痛"
+  },
+  {
+    "name": "红豆蔻",
+    "category": "温里药",
+    "efficacy": "散寒燥湿，醒脾消食"
+  },
+  {
+    "name": "山柰",
+    "category": "温里药",
+    "efficacy": "温中化湿，行气止痛"
+  },
+  {
+    "name": "山羊角",
+    "category": "平肝息风药",
+    "efficacy": "平肝镇惊"
+  },
+  {
+    "name": "石决明",
+    "category": "平肝息风药",
+    "efficacy": "平肝潜阳，清肝明目"
+  },
+  {
+    "name": "珍珠母",
+    "category": "平肝息风药",
+    "efficacy": "平肝潜阳，安神定惊，明目退翳"
+  },
+  {
+    "name": "牡蛎",
+    "category": "平肝息风药",
+    "efficacy": "重镇安神，潜阳补阴，软坚散结"
+  },
+  {
+    "name": "紫贝齿",
+    "category": "平肝息风药",
+    "efficacy": "平肝潜阳，清肝明目，镇惊安神"
+  },
+  {
+    "name": "代赭石",
+    "category": "平肝息风药",
+    "efficacy": "平肝潜阳，重镇降逆，凉血止血"
+  },
+  {
+    "name": "刺蒺藜",
+    "category": "平肝息风药",
+    "efficacy": "平肝疏肝，活血祛风，明目止痒"
+  },
+  {
+    "name": "罗布麻",
+    "category": "平肝息风药",
+    "efficacy": "平肝安神，清热利尿"
+  },
+  {
+    "name": "生铁落",
+    "category": "平肝息风药",
+    "efficacy": "平肝镇惊"
+  },
+  {
+    "name": "天麻",
+    "category": "平肝息风药",
+    "efficacy": "息风止痉，平抑肝阳，祛风通络"
+  },
+  {
+    "name": "钩藤",
+    "category": "平肝息风药",
+    "efficacy": "息风定惊，清热平肝"
+  },
+  {
+    "name": "僵蚕",
+    "category": "平肝息风药",
+    "efficacy": "息风止痉，祛风止痛，化痰散结"
+  },
+  {
+    "name": "蜈蚣",
+    "category": "平肝息风药",
+    "efficacy": "息风镇痉，通络止痛，攻毒散结"
+  },
+  {
+    "name": "地龙",
+    "category": "平肝息风药",
+    "efficacy": "清热定惊，通络，平喘，利尿"
+  },
+  {
+    "name": "珍珠",
+    "category": "平肝息风药",
+    "efficacy": "安神定惊，明目消翳，解毒生肌，润肤祛斑"
+  },
+  {
+    "name": "玳瑁",
+    "category": "平肝息风药",
+    "efficacy": "清热解毒，平肝定惊"
+  },
+  {
+    "name": "磁石",
+    "category": "安神药",
+    "efficacy": "镇惊安神，平肝潜阳，聪耳明目，纳气平喘"
+  },
+  {
+    "name": "龙骨",
+    "category": "安神药",
+    "efficacy": "镇惊安神，平肝潜阳，收敛固涩"
+  },
+  {
+    "name": "琥珀",
+    "category": "安神药",
+    "efficacy": "镇惊安神，活血散瘀，利尿通淋"
+  },
+  {
+    "name": "酸枣仁",
+    "category": "安神药",
+    "efficacy": "养心补肝，宁心安神，敛汗，生津"
+  },
+  {
+    "name": "柏子仁",
+    "category": "安神药",
+    "efficacy": "养心安神，润肠通便，止汗"
+  },
+  {
+    "name": "首乌藤",
+    "category": "安神药",
+    "efficacy": "养心安神，祛风通络"
+  },
+  {
+    "name": "合欢皮",
+    "category": "安神药",
+    "efficacy": "解郁安神，活血消肿"
+  },
+  {
+    "name": "合欢花",
+    "category": "安神药",
+    "efficacy": "解郁安神"
+  },
+  {
+    "name": "远志",
+    "category": "安神药",
+    "efficacy": "安神益智，交通心肾，祛痰，消肿"
+  },
+  {
+    "name": "石菖蒲",
+    "category": "安神药",
+    "efficacy": "开窍豁痰，醒神益智，化湿开胃"
+  },
+  {
+    "name": "夜交藤",
+    "category": "安神药",
+    "efficacy": "养心安神，祛风通络"
+  },
+  {
+    "name": "淮小麦",
+    "category": "安神药",
+    "efficacy": "养心阴，益心气，安神"
+  },
+  {
+    "name": "冰片",
+    "category": "开窍药",
+    "efficacy": "开窍醒神，清热止痛"
+  },
+  {
+    "name": "苏合香",
+    "category": "开窍药",
+    "efficacy": "开窍醒神，辟秽止痛"
+  },
+  {
+    "name": "安息香",
+    "category": "开窍药",
+    "efficacy": "开窍醒神，行气活血，止痛"
+  },
+  {
+    "name": "皂荚",
+    "category": "开窍药",
+    "efficacy": "祛痰开窍，散结消肿"
+  },
+  {
+    "name": "麻黄根",
+    "category": "收涩药",
+    "efficacy": "固表止汗"
+  },
+  {
+    "name": "浮小麦",
+    "category": "收涩药",
+    "efficacy": "固表止汗，益气，除热"
+  },
+  {
+    "name": "糯稻根须",
+    "category": "收涩药",
+    "efficacy": "固表止汗，益胃生津，退虚热"
+  },
+  {
+    "name": "五倍子",
+    "category": "收涩药",
+    "efficacy": "敛肺降火，涩肠止泻，固精止遗，敛汗止血"
+  },
+  {
+    "name": "诃子",
+    "category": "收涩药",
+    "efficacy": "涩肠止泻，敛肺止咳，降火利咽"
+  },
+  {
+    "name": "石榴皮",
+    "category": "收涩药",
+    "efficacy": "涩肠止泻，驱虫"
+  },
+  {
+    "name": "肉豆蔻",
+    "category": "收涩药",
+    "efficacy": "温中行气，涩肠止泻"
+  },
+  {
+    "name": "赤石脂",
+    "category": "收涩药",
+    "efficacy": "涩肠止泻，收敛止血，生肌敛疮"
+  },
+  {
+    "name": "禹余粮",
+    "category": "收涩药",
+    "efficacy": "涩肠止泻，收敛止血"
+  },
+  {
+    "name": "禹粮石",
+    "category": "收涩药",
+    "efficacy": "涩肠止泻，收敛止血"
+  },
+  {
+    "name": "覆盆子",
+    "category": "收涩药",
+    "efficacy": "益肾固精缩尿，养肝明目"
+  },
+  {
+    "name": "桑螵蛸",
+    "category": "收涩药",
+    "efficacy": "固精缩尿，补肾助阳"
+  },
+  {
+    "name": "金樱子",
+    "category": "收涩药",
+    "efficacy": "固精缩尿，固崩止带，涩肠止泻"
+  },
+  {
+    "name": "海螵蛸",
+    "category": "收涩药",
+    "efficacy": "收敛止血，涩精止带，制酸止痛，收湿敛疮"
+  },
+  {
+    "name": "刺猬皮",
+    "category": "收涩药",
+    "efficacy": "固精缩尿，收敛止血，化瘀止痛"
+  },
+  {
+    "name": "紫梢花",
+    "category": "收涩药",
+    "efficacy": "补肾助阳，固精缩尿"
+  },
+  {
+    "name": "翠粟壳",
+    "category": "收涩药",
+    "efficacy": "敛肺，涩肠，止痛"
+  },
+  {
+    "name": "明矾",
+    "category": "收涩药",
+    "efficacy": "收湿敛疮，止血化痰，止泻，解毒杀虫"
+  },
+  {
+    "name": "蛇床子",
+    "category": "攻毒杀虫止痒药",
+    "efficacy": "燥湿祛风，杀虫止痒，温肾壮阳"
+  },
+  {
+    "name": "蜂房",
+    "category": "攻毒杀虫止痒药",
+    "efficacy": "攻毒杀虫，祛风止痛"
+  },
+  {
+    "name": "大蒜",
+    "category": "攻毒杀虫止痒药",
+    "efficacy": "解毒消肿，杀虫止痢"
+  },
+  {
+    "name": "蜂蜡",
+    "category": "攻毒杀虫止痒药",
+    "efficacy": "解毒，敛疮，生肌，止痛"
+  },
+  {
+    "name": "皂角刺",
+    "category": "攻毒杀虫止痒药",
+    "efficacy": "消肿排脓，祛风杀虫"
+  },
+  {
+    "name": "使君子",
+    "category": "攻毒杀虫止痒药",
+    "efficacy": "杀虫消积"
+  },
+  {
+    "name": "榧子",
+    "category": "攻毒杀虫止痒药",
+    "efficacy": "杀虫消积，润肺止咳，润肠通便"
+  },
+  {
+    "name": "南瓜子",
+    "category": "攻毒杀虫止痒药",
+    "efficacy": "杀虫"
+  },
+  {
+    "name": "贯众",
+    "category": "攻毒杀虫止痒药",
+    "efficacy": "清热解毒，止血，杀虫"
+  },
+  {
+    "name": "炉甘石",
+    "category": "拔毒生肌药",
+    "efficacy": "解毒明目退翳，收湿止痒敛疮"
+  },
+  {
+    "name": "硼砂",
+    "category": "拔毒生肌药",
+    "efficacy": "外用清热解毒，内服清肺化痰"
+  },
+  {
+    "name": "毛冬青",
+    "category": "拔毒生肌药",
+    "efficacy": "清热解毒，活血通络"
+  },
+  {
+    "name": "苍术",
+    "category": "芳香化湿药",
+    "efficacy": "燥湿健脾，祛风散寒，明目"
+  },
+  {
+    "name": "厚朴",
+    "category": "芳香化湿药",
+    "efficacy": "燥湿消痰，下气除满"
+  },
+  {
+    "name": "藿香",
+    "category": "芳香化湿药",
+    "efficacy": "芳香化浊，和中止呕，发表解暑"
+  },
+  {
+    "name": "佩兰",
+    "category": "芳香化湿药",
+    "efficacy": "芳香化湿，醒脾开胃，发表解暑"
+  },
+  {
+    "name": "砂仁",
+    "category": "芳香化湿药",
+    "efficacy": "化湿开胃，温脾止泻，理气安胎"
+  },
+  {
+    "name": "豆蔻",
+    "category": "芳香化湿药",
+    "efficacy": "化湿行气，温中止呕，开胃消食"
+  },
+  {
+    "name": "草豆蔻",
+    "category": "芳香化湿药",
+    "efficacy": "燥湿行气，温中止呕"
+  },
+  {
+    "name": "草果",
+    "category": "芳香化湿药",
+    "efficacy": "燥湿温中，截疟除痰"
+  },
+  {
+    "name": "独活",
+    "category": "祛风湿药",
+    "efficacy": "祛风除湿，通痹止痛"
+  },
+  {
+    "name": "威灵仙",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，通经络，消痰水，治骨鲠"
+  },
+  {
+    "name": "蕲蛇",
+    "category": "祛风湿药",
+    "efficacy": "祛风通络，定惊止痉"
+  },
+  {
+    "name": "乌梢蛇",
+    "category": "祛风湿药",
+    "efficacy": "祛风通络，定惊止痉"
+  },
+  {
+    "name": "木瓜",
+    "category": "祛风湿药",
+    "efficacy": "舒筋活络，和胃化湿"
+  },
+  {
+    "name": "蚕沙",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，和胃化湿"
+  },
+  {
+    "name": "伸筋草",
+    "category": "祛风湿药",
+    "efficacy": "祛风除湿，舒筋活络"
+  },
+  {
+    "name": "寻骨风",
+    "category": "祛风湿药",
+    "efficacy": "祛风通络，止痛"
+  },
+  {
+    "name": "松节",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，通络止痛"
+  },
+  {
+    "name": "海风藤",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，通经络，止痹痛"
+  },
+  {
+    "name": "青风藤",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，通经络，利小便"
+  },
+  {
+    "name": "丁公藤",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，消肿止痛"
+  },
+  {
+    "name": "昆明山海棠",
+    "category": "祛风湿药",
+    "efficacy": "祛瘀止痛，祛风除湿，续筋接骨"
+  },
+  {
+    "name": "路路通",
+    "category": "祛风湿药",
+    "efficacy": "祛风活络，利水，通经下乳，止痒"
+  },
+  {
+    "name": "秦艽",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，清湿热，止痹痛，退虚热"
+  },
+  {
+    "name": "防己",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，止痛，利水消肿"
+  },
+  {
+    "name": "桑枝",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，利关节"
+  },
+  {
+    "name": "豨莶草",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，利关节，解毒"
+  },
+  {
+    "name": "臭梧桐",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，通经络，平肝"
+  },
+  {
+    "name": "海桐皮",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，通络止痛，杀虫止痒"
+  },
+  {
+    "name": "络石藤",
+    "category": "祛风湿药",
+    "efficacy": "祛风通络，凉血消肿"
+  },
+  {
+    "name": "穿山龙",
+    "category": "祛风湿药",
+    "efficacy": "祛风除湿，活血通络，止咳化痰"
+  },
+  {
+    "name": "丝瓜络",
+    "category": "祛风湿药",
+    "efficacy": "祛风通络，化痰解毒"
+  },
+  {
+    "name": "桑寄生",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，补肝肾，强筋骨，安胎元"
+  },
+  {
+    "name": "五加皮",
+    "category": "祛风湿药",
+    "efficacy": "祛风除湿，补益肝肾，强筋壮骨"
+  },
+  {
+    "name": "千年健",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，强筋骨"
+  },
+  {
+    "name": "鹿衔草",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，强筋骨，止血"
+  },
+  {
+    "name": "雪莲花",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，强筋骨，补肾阳，调冲任"
+  },
+  {
+    "name": "石楠叶",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，强筋骨，益肝肾"
+  },
+  {
+    "name": "狗脊",
+    "category": "祛风湿药",
+    "efficacy": "祛风湿，补肝肾，强腰膝"
+  },
+  {
+    "name": "石膏",
+    "category": "矿物药",
+    "efficacy": "清热泻火，除烦止渴，收敛生肌"
+  },
+  {
+    "name": "芒硝",
+    "category": "矿物药",
+    "efficacy": "泻下通便，润燥软坚，清火消肿"
+  },
+  {
+    "name": "玄明粉",
+    "category": "矿物药",
+    "efficacy": "泻下通便，润燥软坚，清热消肿"
+  },
+  {
+    "name": "赭石",
+    "category": "矿物药",
+    "efficacy": "平肝潜阳，重镇降逆，凉血止血"
+  },
+  {
+    "name": "阴起石",
+    "category": "矿物药",
+    "efficacy": "温肾壮阳"
+  },
+  {
+    "name": "白石英",
+    "category": "矿物药",
+    "efficacy": "温肺肾，安心神，利小便"
+  },
+  {
+    "name": "浮石",
+    "category": "矿物药",
+    "efficacy": "清肺化痰，软坚散结，利尿通淋"
+  },
+  {
+    "name": "海浮石",
+    "category": "矿物药",
+    "efficacy": "清肺化痰，软坚散结，利尿通淋"
+  },
+  {
+    "name": "信石",
+    "category": "矿物药",
+    "efficacy": "蚀疮去腐，祛痰平喘"
+  },
+  {
+    "name": "密陀僧",
+    "category": "矿物药",
+    "efficacy": "外用拔毒去腐，收敛止痒"
+  },
+  {
+    "name": "伏龙肝",
+    "category": "矿物药",
+    "efficacy": "温中止血，止呕，止泻"
+  },
+  {
+    "name": "铜绿",
+    "category": "矿物药",
+    "efficacy": "退翳，涌吐风痰，杀虫拔毒"
+  },
+  {
+    "name": "皂矾",
+    "category": "矿物药",
+    "efficacy": "解毒燥湿，杀虫补血"
+  },
+  {
+    "name": "硝石",
+    "category": "矿物药",
+    "efficacy": "攻坚破积，利水泻下"
+  },
+  {
+    "name": "芦荟",
+    "category": "其他类",
+    "efficacy": "泻下通便，清肝泻火，杀虫疗疳"
+  },
+  {
+    "name": "番泻叶",
+    "category": "其他类",
+    "efficacy": "泻热通便，消积健胃"
+  },
+  {
+    "name": "罗勒",
+    "category": "其他类",
+    "efficacy": "疏风解表，化湿和中，活血解毒"
+  },
+  {
+    "name": "大风子",
+    "category": "其他类",
+    "efficacy": "祛风燥湿，攻毒杀虫"
+  },
+  {
+    "name": "木蝴蝶",
+    "category": "其他类",
+    "efficacy": "清肺利咽，疏肝和胃"
+  },
+  {
+    "name": "功劳木",
+    "category": "其他类",
+    "efficacy": "清热燥湿，泻火解毒"
+  },
+  {
+    "name": "石见穿",
+    "category": "其他类",
+    "efficacy": "活血化瘀，清热利湿，解毒消肿"
+  },
+  {
+    "name": "白英",
+    "category": "其他类",
+    "efficacy": "清热解毒，利湿祛风"
+  },
+  {
+    "name": "龙葵",
+    "category": "其他类",
+    "efficacy": "清热解毒，活血消肿，利水"
+  },
+  {
+    "name": "羊蹄根",
+    "category": "其他类",
+    "efficacy": "凉血止血，解毒杀虫，泻下"
+  },
+  {
+    "name": "委陵菜",
+    "category": "其他类",
+    "efficacy": "清热解毒，凉血止痢"
+  },
+  {
+    "name": "积雪草",
+    "category": "其他类",
+    "efficacy": "清热利湿，解毒消肿"
+  },
+  {
+    "name": "香茶菜",
+    "category": "其他类",
+    "efficacy": "清热解毒，散瘀消肿"
+  },
+  {
+    "name": "蛇莓",
+    "category": "其他类",
+    "efficacy": "清热解毒，凉血消肿"
+  },
+  {
+    "name": "墓头回",
+    "category": "其他类",
+    "efficacy": "清热燥湿，止血止带"
+  },
+  {
+    "name": "紫参",
+    "category": "其他类",
+    "efficacy": "清热解毒，消肿散结"
+  },
+  {
+    "name": "猫爪草",
+    "category": "其他类",
+    "efficacy": "解毒消肿，化痰散结"
+  },
+  {
+    "name": "韩信草",
+    "category": "其他类",
+    "efficacy": "清热解毒，活血止血，消肿止痛"
+  },
+  {
+    "name": "草珊瑚",
+    "category": "其他类",
+    "efficacy": "清热解毒，祛风通络"
+  },
+  {
+    "name": "杠板归",
+    "category": "其他类",
+    "efficacy": "清热解毒，利湿退黄"
+  },
+  {
+    "name": "万寿菊",
+    "category": "其他类",
+    "efficacy": "清热解毒，化痰止咳"
+  },
+  {
+    "name": "肿节风",
+    "category": "其他类",
+    "efficacy": "清热凉血，活血消斑，祛风通络"
+  },
+  {
+    "name": "重楼",
+    "category": "其他类",
+    "efficacy": "清热解毒，消肿止痛，凉肝定惊"
+  },
+  {
+    "name": "拳参",
+    "category": "其他类",
+    "efficacy": "清热解毒，消肿，凉肝定惊"
+  },
+  {
+    "name": "漏芦",
+    "category": "其他类",
+    "efficacy": "清热解毒，消痈，下乳，舒筋通脉"
+  },
+  {
+    "name": "飞扬草",
+    "category": "其他类",
+    "efficacy": "清热解毒，利湿止痒"
+  },
+  {
+    "name": "小铜锤",
+    "category": "其他类",
+    "efficacy": "活血调经，消肿止痛"
+  },
+  {
+    "name": "水飞蓟",
+    "category": "其他类",
+    "efficacy": "清热解毒，疏肝利胆"
+  },
+  {
+    "name": "叶下珠",
+    "category": "其他类",
+    "efficacy": "利湿退黄，清热解毒，明目，消积"
+  },
+  {
+    "name": "白屈菜",
+    "category": "其他类",
+    "efficacy": "清热解毒，止痛，镇咳"
+  },
+  {
+    "name": "田基黄",
+    "category": "其他类",
+    "efficacy": "清热利湿，退黄疸，解毒消肿"
+  },
+  {
+    "name": "青叶胆",
+    "category": "其他类",
+    "efficacy": "清肝利胆，清热利湿"
+  },
+  {
+    "name": "三颗针",
+    "category": "其他类",
+    "efficacy": "清热燥湿，泻火解毒"
+  },
+  {
+    "name": "马尾连",
+    "category": "其他类",
+    "efficacy": "清热燥湿，泻火解毒"
+  },
+  {
+    "name": "功劳叶",
+    "category": "其他类",
+    "efficacy": "清虚热，益肝肾，祛风湿"
+  },
+  {
+    "name": "椿皮",
+    "category": "其他类",
+    "efficacy": "清热燥湿，收敛止带，止泻，止血"
+  },
+  {
+    "name": "苦杏仁",
+    "category": "化痰止咳平喘药",
+    "efficacy": "降气止咳平喘，润肠通便"
+  },
+  {
+    "name": "广藿香",
+    "category": "芳香化湿药",
+    "efficacy": "芳香化浊，和中止呕，发表解暑"
+  }
+]
