@@ -3561,8 +3561,16 @@ def forum_image(filename):
 def get_random_herb():
     """获取随机一味中药"""
     db=get_db(); cur=db.cursor()
-    cur.execute("SELECT * FROM herbs ORDER BY RAND() LIMIT 1")
+    recent_names=[name.strip() for name in request.args.get('exclude','').split(',') if name.strip()][:12]
+    if recent_names:
+        placeholders=','.join(['%s']*len(recent_names))
+        cur.execute(f"SELECT * FROM herbs WHERE name NOT IN ({placeholders}) ORDER BY RAND() LIMIT 1",recent_names)
+    else:
+        cur.execute("SELECT * FROM herbs ORDER BY RAND() LIMIT 1")
     herb=cur.fetchone()
+    if not herb and recent_names:
+        cur.execute("SELECT * FROM herbs ORDER BY RAND() LIMIT 1")
+        herb=cur.fetchone()
     db.close()
     if not herb: return err('暂无中药数据')
     return success(_row(herb))

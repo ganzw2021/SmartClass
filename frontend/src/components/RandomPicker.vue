@@ -138,17 +138,64 @@ const sticks = [
 const signaturePool = [
   '心有所向，学有所成。', '保持好奇，每一次思考都在靠近答案。',
   '认真积累，终会迎来属于你的高光时刻。', '大胆表达，你的想法值得被听见。',
-  '今天再进步一点，好运就离你更近一点。', '勤求古训，博采众方。'
+  '今天再进步一点，好运就离你更近一点。', '勤求古训，博采众方。',
+  '把今天的问题想明白，就是一份收获。', '你的每一次举手，都在为自己打开新可能。',
+  '愿你带着好奇心，把知识变成自己的本领。', '慢慢来，扎实的脚步也能走得很远。',
+  '敢于提问的人，已经迈出了探索的第一步。', '多看一眼细节，也许就能发现新的答案。',
+  '愿今天的你，比昨天多懂一点点。', '认真观察，是认识世界的好方法。',
+  '别怕答错，思考本身就值得鼓励。', '把不懂说出来，学习才有新的起点。',
+  '每一味药材都有故事，每一次学习都有惊喜。', '从一片叶子开始，也能认识广阔的本草世界。',
+  '愿你的努力像种子一样，悄悄生根发芽。', '今天的灵感，可能藏在一次勇敢的表达里。',
+  '多一点耐心，就多一分看清问题的机会。', '你的认真，会在未来给你回响。',
+  '愿你用清晰的思路，迎接今天的挑战。', '和同学分享发现，快乐也会加倍。',
+  '把课堂里的小收获，积成成长的大力量。', '愿你的目光始终明亮，问题始终有趣。',
+  '今天试着换个角度，答案也许就在眼前。', '每一次练习，都是下一次从容的底气。',
+  '学会倾听，也是一种出色的表达。', '发现自己的进步，就是今天的幸运。',
+  '愿你在求知路上，既有热情也有耐心。', '一步一个脚印，知识会越来越牢固。',
+  '认真记录的你，正在为未来留下线索。', '愿你对未知保持敬意，对学习保持热爱。',
+  '把复杂的问题拆开，答案会慢慢清楚。', '今天的好问题，值得大家一起讨论。',
+  '尝试说出你的推理过程，比猜对更精彩。', '愿你在本草的世界里发现更多奇妙联系。',
+  '小小的进步，也值得为自己鼓掌。', '你的想法可能正是讨论需要的新角度。',
+  '把好奇带进课堂，把收获带出课堂。', '愿你学会辨认差异，也欣赏万物的独特。',
+  '今天认真读过的内容，会成为明天的灵感。', '给自己一点信心，你已经比想象中更会思考。',
+  '愿你越学越会问，越问越会学。', '从观察到理解，每一步都值得珍惜。',
+  '课堂上的一次尝试，可能成为成长的转折点。', '把知识讲给别人听，是检验理解的好办法。',
+  '愿你与同学互相启发，一起找到更多答案。', '新的知识正在靠近，准备好迎接它吧。'
 ]
 const backupHerbs = [
   { name: '人参', category: '补气药', efficacy: '大补元气，复脉固脱，补脾益肺，生津养血' },
   { name: '黄芪', category: '补气药', efficacy: '补气升阳，固表止汗，利水消肿，生津养血' },
+  { name: '党参', category: '补气药', efficacy: '健脾益肺，养血生津' },
+  { name: '山药', category: '补气药', efficacy: '补脾养胃，生津益肺，补肾涩精' },
   { name: '当归', category: '补血药', efficacy: '补血活血，调经止痛，润肠通便' },
+  { name: '白芍', category: '补血药', efficacy: '养血调经，柔肝止痛，敛阴止汗' },
   { name: '枸杞子', category: '补阴药', efficacy: '滋补肝肾，益精明目' },
+  { name: '麦冬', category: '补阴药', efficacy: '养阴润肺，益胃生津，清心除烦' },
   { name: '金银花', category: '清热药', efficacy: '清热解毒，疏散风热' },
+  { name: '菊花', category: '清热药', efficacy: '散风清热，平肝明目，清热解毒' },
+  { name: '蒲公英', category: '清热药', efficacy: '清热解毒，消肿散结，利尿通淋' },
+  { name: '薄荷', category: '解表药', efficacy: '疏散风热，清利头目，利咽，透疹' },
+  { name: '葛根', category: '解表药', efficacy: '解肌退热，生津止渴，升阳止泻' },
+  { name: '陈皮', category: '理气药', efficacy: '理气健脾，燥湿化痰' },
+  { name: '丹参', category: '活血化瘀药', efficacy: '活血祛瘀，通经止痛，清心除烦' },
+  { name: '茯苓', category: '利水渗湿药', efficacy: '利水渗湿，健脾宁心' },
+  { name: '薏苡仁', category: '利水渗湿药', efficacy: '利水渗湿，健脾止泻，除痹，排脓' },
+  { name: '山楂', category: '消食药', efficacy: '消食健胃，行气散瘀，化浊降脂' },
+  { name: '酸枣仁', category: '安神药', efficacy: '养心补肝，宁心安神，敛汗，生津' },
   { name: '甘草', category: '补气药', efficacy: '补脾益气，清热解毒，祛痰止咳，缓急止痛' }
 ]
 const pick = items => items[Math.floor(Math.random() * items.length)]
+const recentHerbs = []
+const recentSignatures = []
+function pickFresh(items, recent) {
+  const options = items.filter(item => !recent.includes(typeof item === 'string' ? item : item.name))
+  return pick(options.length ? options : items)
+}
+function remember(recent, value, limit) {
+  if (!value) return
+  recent.push(value)
+  if (recent.length > limit) recent.shift()
+}
 let phaseTimer
 let requestController
 let drawVersion = 0
@@ -179,9 +226,10 @@ async function fetchRandomHerb(version) {
   const controller = new AbortController()
   requestController = controller
   const timeout = setTimeout(() => controller.abort(), 4500)
-  let herb = pick(backupHerbs)
+  let herb = pickFresh(backupHerbs, recentHerbs)
   try {
-    const res = await fetch(`${BACKEND_BASE}/api/herb/random`, { signal: controller.signal })
+    const query = recentHerbs.length ? `?exclude=${encodeURIComponent(recentHerbs.join(','))}` : ''
+    const res = await fetch(`${BACKEND_BASE}/api/herb/random${query}`, { signal: controller.signal })
     if (!res.ok) throw new Error('药材接口请求失败')
     const data = await res.json()
     if (data.success && data.data?.name) herb = data.data
@@ -191,17 +239,22 @@ async function fetchRandomHerb(version) {
     clearTimeout(timeout)
     if (requestController === controller) requestController = undefined
   }
-  if (version === drawVersion) selectedHerb.value = herb
+  if (version === drawVersion) {
+    selectedHerb.value = herb
+    remember(recentHerbs, herb.name, 12)
+  }
 }
 function doRandom() {
   if (isBusy.value || !students.value.length) return
   requestController?.abort()
   const version = ++drawVersion
   const student = pick(students.value)
+  const signature = student.signature || pickFresh(signaturePool, recentSignatures)
+  if (!student.signature) remember(recentSignatures, signature, 12)
   selectedStudent.value = {
     name: student.name || student,
     avatar: student.avatar || null,
-    signature: student.signature || pick(signaturePool)
+    signature
   }
   selectedHerb.value = null
   drawDate.value = new Date().toLocaleDateString('zh-CN').replaceAll('/', '.')
