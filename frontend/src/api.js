@@ -476,7 +476,8 @@ export async function removeAdminClassMember(classId, studentId) {
   return await api.delete(`/admin/classes/${classId}/members/${studentId}`)
 }
 export async function createAdminStudentAccounts(classId, defaultPassword) {
-  return await api.post('/admin/students/create_accounts', { class_id: classId, default_password: defaultPassword || '123456' })
+  // 每名学生的密码独立加密，整班创建可能超过通用的 10 秒等待时间。
+  return await api.post('/admin/students/create_accounts', { class_id: classId, default_password: defaultPassword || '123456' }, { timeout: 120000 })
 }
 export async function resetAdminStudentPassword(accountId, newPassword) {
   return await api.post('/admin/students/reset_password', { account_id: accountId, new_password: newPassword || '123456' })

@@ -83,8 +83,8 @@
           <button v-if="selectedStudents.length > 0" @click="batchDeleteStudents" class="bg-red-50 text-red-600 px-4 py-2 rounded-xl text-sm font-bold hover:bg-red-100 transition-colors">
             删除已选({{ selectedStudents.length }})
           </button>
-          <button v-if="selectedClass.class_type !== 'teaching'" @click="createAccountsForClass" class="bg-orange-50 text-orange-600 px-4 py-2 rounded-xl text-sm font-bold hover:bg-orange-100 transition-colors">
-            批量建账号
+          <button v-if="selectedClass.class_type !== 'teaching'" @click="createAccountsForClass" :disabled="creatingAccounts" :aria-busy="creatingAccounts" class="bg-orange-50 text-orange-600 px-4 py-2 rounded-xl text-sm font-bold hover:bg-orange-100 transition-colors disabled:opacity-50 disabled:cursor-wait">
+            {{ creatingAccounts ? '账号创建中，请稍候…' : '批量建账号' }}
           </button>
         </div>
       </div>
@@ -313,6 +313,7 @@ const classForm = ref({ id: '', name: '', description: '', class_type: 'administ
 const studentForm = ref({ name: '', student_number: '' })
 const studentEditForm = ref({ id: '', name: '', student_number: '' })
 const savingStudentEdit = ref(false)
+const creatingAccounts = ref(false)
 
 // 批量添加
 const batchText = ref('')
@@ -557,15 +558,24 @@ async function confirmDeleteStudent(s) {
 }
 
 async function createAccountsForClass() {
+  if (creatingAccounts.value || !selectedClass.value) return
   if (!confirm(`为 ${selectedClass.value.name} 中未建账号的学生批量创建账号？默认密码123456。`)) return
+  const classId = selectedClass.value.id
+  creatingAccounts.value = true
   try {
-    const res = await createAdminStudentAccounts(selectedClass.value.id)
+    const res = await createAdminStudentAccounts(classId)
     if (res.success) {
       showToast(`成功创建 ${res.data.created} 个账号，跳过 ${res.data.skipped} 个`)
-      loadClasses()
+    } else {
+      showToast(res.message || '账号创建未完成，请检查账号状态')
     }
   } catch (e) {
-    showToast('批量创建失败')
+    showToast(e.code === 'ECONNABORTED' || e.code === 'ETIMEDOUT'
+      ? '等待超时，服务器可能仍在创建，请刷新查看账号状态'
+      : e.response?.data?.message || '未能确认创建结果，请刷新查看账号状态')
+  } finally {
+    await loadClasses()
+    creatingAccounts.value = false
   }
 }
 

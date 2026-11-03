@@ -20,8 +20,8 @@
           <input v-model="batchPassword" type="text" placeholder="默认 123456" class="w-full border-2 border-slate-100 p-2.5 rounded-xl outline-none text-sm" />
         </div>
         <div class="flex items-end gap-2">
-          <button @click="batchCreateAccounts" class="bg-orange-500 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-orange-600 transition-colors flex-1">
-            批量创建账号
+          <button @click="batchCreateAccounts" :disabled="creatingAccounts" :aria-busy="creatingAccounts" class="bg-orange-500 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-orange-600 transition-colors flex-1 disabled:opacity-50 disabled:cursor-wait">
+            {{ creatingAccounts ? '账号创建中，请稍候…' : '批量创建账号' }}
           </button>
           <button @click="batchResetPasswords" class="bg-slate-600 text-white px-4 py-2.5 rounded-xl text-sm font-bold hover:bg-slate-700 transition-colors flex-1">
             批量重置密码
@@ -112,6 +112,7 @@ const classes = ref([])
 const loading = ref(true)
 const batchClassId = ref('')
 const batchPassword = ref('')
+const creatingAccounts = ref(false)
 const toast = ref('')
 
 const students = computed(() => {
@@ -158,13 +159,20 @@ async function loadData() {
 }
 
 async function batchCreateAccounts() {
+  if (creatingAccounts.value) return
   if (!batchClassId.value) return showToast('请先选择班级')
+  creatingAccounts.value = true
   try {
     const res = await createAdminStudentAccounts(batchClassId.value, batchPassword.value || '123456')
     if (res.success) showToast(`创建 ${res.data.created} 个账号，跳过 ${res.data.skipped} 个`)
-    loadData()
+    else showToast(res.message || '账号创建未完成，请检查账号状态')
   } catch (e) {
-    showToast('操作失败')
+    showToast(e.code === 'ECONNABORTED' || e.code === 'ETIMEDOUT'
+      ? '等待超时，服务器可能仍在创建，请刷新查看账号状态'
+      : e.response?.data?.message || '未能确认创建结果，请刷新查看账号状态')
+  } finally {
+    await loadData()
+    creatingAccounts.value = false
   }
 }
 
