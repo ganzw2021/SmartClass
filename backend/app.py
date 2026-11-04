@@ -1481,7 +1481,7 @@ def get_student_resources():
     # 获取学生可选的课程
     cur.execute("SELECT DISTINCT c.id,c.name,c.term FROM courses c JOIN course_classes cc ON cc.course_id=c.id JOIN class_students csm ON csm.class_id=cc.class_id WHERE csm.student_id=%s",(request.teacher_id,))
     courses=cur.fetchall()
-    if not courses: return success([])
+    if not courses: db.close(); return success([])
     course_ids=[str(c['id']) for c in courses]
     # 查询资源
     sql="SELECT * FROM course_resources WHERE course_id IN ("+",".join(["%s"]*len(course_ids))+")"
@@ -2462,6 +2462,7 @@ def stu_change_password():
 @student_required
 def stu_homework():
     db=get_db(); cur=db.cursor()
+    course_id=request.args.get('course_id','')
     cur.execute("""
         SELECT h.*,c.name as course_name FROM homework h
         JOIN courses c ON c.id=h.course_id
@@ -2474,9 +2475,9 @@ def stu_homework():
                 WHERE cc.course_id=c.id AND csm.student_id=%s
             ))
         )
-        AND h.is_published=1
+        AND h.is_published=1 AND (%s='' OR h.course_id=%s)
         ORDER BY h.deadline DESC
-    """, (request.teacher_id, request.teacher_id))
+    """, (request.teacher_id, request.teacher_id, course_id, course_id))
     hws=_rows(cur.fetchall())
     for hw in hws:
         cur.execute("SELECT * FROM homework_attachments WHERE homework_id=%s",(hw['id'],))

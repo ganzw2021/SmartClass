@@ -71,7 +71,7 @@
 
       <!-- 个人资料卡片 -->
       <div class="bg-white rounded-2xl shadow-sm border border-blue-50 p-6">
-        <div class="flex items-start gap-4">
+        <div class="flex flex-wrap sm:flex-nowrap items-start gap-4">
           <!-- 头像 -->
           <div class="relative flex-shrink-0">
             <div v-if="profile.avatar" class="w-16 h-16 rounded-full overflow-hidden">
@@ -118,12 +118,13 @@
         </div>
 
         <!-- 无课程 -->
-        <div v-if="courses.length === 0" class="bg-white rounded-2xl p-8 text-center text-slate-400">
+        <div v-if="courseError" role="alert" class="rounded-xl bg-red-50 p-4 text-red-600">{{ courseError }} <button @click="loadCourses" class="underline">重试</button></div>
+        <div v-else-if="courses.length === 0" class="bg-white rounded-2xl p-8 text-center text-slate-400">
           暂无课程信息
         </div>
 
         <!-- 课程卡片列表 -->
-        <div v-for="course in courses" :key="course.id"
+        <div v-for="course in courses" :key="`${course.id}-${course.class_name}`"
           class="bg-white rounded-2xl shadow-sm border border-blue-50 p-5 hover:shadow-md transition-shadow">
           <div class="flex items-start justify-between gap-4">
             <div class="flex-1 min-w-0">
@@ -146,21 +147,21 @@
     <!-- 编辑签名弹窗 -->
     <Teleport to="body">
       <div v-if="showEditModal" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6">
-        <div class="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md sm:p-6 p-5 shadow-2xl">
+        <div class="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md sm:p-6 p-5 shadow-2xl max-h-[90vh] overflow-y-auto">
           <!-- 移动端顶部拖动条 -->
           <div class="sm:hidden w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4"></div>
           
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-bold text-slate-800">编辑个性签名</h3>
-            <button @click="showEditModal = false" class="sm:hidden w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500">
+            <button @click="showEditModal = false" :disabled="saving" aria-label="关闭弹窗" class="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 text-slate-500">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
           </div>
           <textarea v-model="editForm.bio"
             class="w-full border border-slate-200 rounded-xl p-3 text-slate-700 focus:border-blue-400 outline-none resize-none"
-            rows="3" placeholder="介绍一下自己..."></textarea>
+            rows="3" maxlength="200" placeholder="介绍一下自己（最多200字）..."></textarea>
           <div class="flex gap-3 mt-4">
-            <button @click="showEditModal = false" class="flex-1 py-2 text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200">取消</button>
+            <button @click="showEditModal = false" :disabled="saving" class="flex-1 py-2 text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200">取消</button>
             <button @click="saveProfile" :disabled="saving" class="flex-1 py-2 text-white bg-blue-500 rounded-xl hover:bg-blue-600 disabled:opacity-50">
               {{ saving ? '保存中...' : '保存' }}
             </button>
@@ -172,32 +173,36 @@
     <!-- 修改密码弹窗 -->
     <Teleport to="body">
       <div v-if="showPasswordModal" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6">
-        <div class="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md sm:p-6 p-5 shadow-2xl">
+        <div class="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md sm:p-6 p-5 shadow-2xl max-h-[90vh] overflow-y-auto">
           <!-- 移动端顶部拖动条 -->
           <div class="sm:hidden w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4"></div>
           
           <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-bold text-slate-800">修改密码</h3>
-            <button @click="showPasswordModal = false" class="sm:hidden w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500">
+            <button @click="showPasswordModal = false" :disabled="saving" aria-label="关闭弹窗" class="w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 text-slate-500">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
           </div>
           <div class="space-y-3">
             <div>
               <label class="block text-sm text-slate-600 mb-1">旧密码</label>
-              <input v-model="passwordForm.old_password" type="password"
+              <input v-model="passwordForm.old_password" autocomplete="current-password" type="password"
                 class="w-full border border-slate-200 rounded-xl p-3 text-slate-700 focus:border-blue-400 outline-none"
                 placeholder="请输入旧密码" />
             </div>
             <div>
               <label class="block text-sm text-slate-600 mb-1">新密码</label>
-              <input v-model="passwordForm.new_password" type="password"
+              <input v-model="passwordForm.new_password" autocomplete="new-password" type="password"
                 class="w-full border border-slate-200 rounded-xl p-3 text-slate-700 focus:border-blue-400 outline-none"
                 placeholder="请输入新密码" />
             </div>
+            <div>
+              <label class="block text-sm text-slate-600 mb-1">确认新密码</label>
+              <input v-model="passwordForm.confirm_password" type="password" autocomplete="new-password" class="w-full border border-slate-200 rounded-xl p-3" placeholder="请再次输入新密码" />
+            </div>
           </div>
           <div class="flex gap-3 mt-4">
-            <button @click="showPasswordModal = false" class="flex-1 py-2 text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200">取消</button>
+            <button @click="showPasswordModal = false" :disabled="saving" class="flex-1 py-2 text-slate-600 bg-slate-100 rounded-xl hover:bg-slate-200">取消</button>
             <button @click="savePassword" :disabled="saving" class="flex-1 py-2 text-white bg-blue-500 rounded-xl hover:bg-blue-600 disabled:opacity-50">
               {{ saving ? '保存中...' : '保存' }}
             </button>
@@ -207,7 +212,7 @@
     </Teleport>
 
     <!-- Toast提示 -->
-    <div v-if="toast.show" :class="['fixed bottom-20 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full text-white text-sm shadow-lg z-50',
+    <div v-if="toast.show" :class="['fixed bottom-20 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-full text-white text-sm shadow-lg z-[120]',
       toast.type === 'success' ? 'bg-green-500' : 'bg-red-500']">
       {{ toast.message }}
     </div>
@@ -215,7 +220,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onActivated } from 'vue'
+import { studentError } from '../studentHelpers.js'
 import { getStudentCourses, getStudentProfile, updateStudentProfile, changeStudentPassword,
   getStudentNotifications, deleteNotification, clearReadNotifications, markNotificationsRead } from '../api.js'
 
@@ -235,7 +241,7 @@ const unreadCount = ref(0)
 const showEditModal = ref(false)
 const showPasswordModal = ref(false)
 const editForm = ref({ bio: '' })
-const passwordForm = ref({ old_password: '', new_password: '' })
+const passwordForm = ref({ old_password: '', new_password: '', confirm_password: '' })
 const toast = ref({ show: false, message: '', type: 'success' })
 
 // 是否有已读通知
@@ -252,7 +258,7 @@ function openEditModal() {
 }
 
 function openPasswordModal() {
-  passwordForm.value = { old_password: '', new_password: '' }
+  passwordForm.value = { old_password: '', new_password: '', confirm_password: '' }
   showPasswordModal.value = true
 }
 
@@ -360,9 +366,15 @@ function handleAvatarFile(e) {
   reader.readAsDataURL(file)
 }
 
+let courseVersion = 0
+const courseError = ref('')
 async function loadCourses() {
+  const version = ++courseVersion
+  courseError.value = ''
   try {
     const res = await getStudentCourses(selectedTerm.value)
+    if (version !== courseVersion) return
+    if (!res.success) throw new Error(res.message)
     if (res.success) {
       // 兼容新旧返回格式
       if (res.data && res.data.courses) {
@@ -373,11 +385,12 @@ async function loadCourses() {
       }
     }
   } catch (e) {
-    console.error('加载课程失败', e)
+    if (version === courseVersion) courseError.value = studentError(e, '加载课程失败，请重试')
   }
 }
 
 async function saveProfile() {
+  if (saving.value) return
   saving.value = true
   try {
     const res = await updateStudentProfile({ bio: editForm.value.bio, avatar: profile.value.avatar })
@@ -396,6 +409,11 @@ async function saveProfile() {
 }
 
 async function savePassword() {
+  if (saving.value) return
+  if (passwordForm.value.new_password !== passwordForm.value.confirm_password) {
+    showToast('两次输入的新密码不一致', 'error')
+    return
+  }
   if (!passwordForm.value.old_password || !passwordForm.value.new_password) {
     showToast('请填写完整', 'error')
     return
@@ -416,23 +434,16 @@ async function savePassword() {
   }
 }
 
-onMounted(async () => {
+onActivated(async () => {
   try {
-    const [coursesRes, profileRes, notifRes] = await Promise.all([
-      getStudentCourses(),
+    const [, profileResult, notifResult] = await Promise.allSettled([
+      loadCourses(),
       getStudentProfile(),
       getStudentNotifications()
     ])
-    if (coursesRes.success) {
-      if (coursesRes.data && coursesRes.data.courses) {
-        courses.value = coursesRes.data.courses || []
-        terms.value = coursesRes.data.terms || []
-      } else if (Array.isArray(coursesRes.data)) {
-        courses.value = coursesRes.data || []
-      } else {
-        error.value = coursesRes.message || '加载课程失败'
-      }
-    }
+    const profileRes = profileResult.status === 'fulfilled' ? profileResult.value : {}
+    const notifRes = notifResult.status === 'fulfilled' ? notifResult.value : {}
+    if (!profileRes.success || !notifRes.success) showToast('部分资料或消息加载失败，请稍后刷新重试', 'error')
     if (profileRes.success) {
       profile.value = profileRes.data || {}
     }

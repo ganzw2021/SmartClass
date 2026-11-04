@@ -17,7 +17,7 @@
         <select
           v-model="selectedCourseId"
           @change="loadRanking"
-          :disabled="!selectedTerm || filteredCourses.length === 0"
+          :disabled="filteredCourses.length === 0"
           class="border border-slate-200 rounded-xl px-4 py-2.5 text-slate-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none min-w-[200px] disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <option value="">请选择课程</option>
@@ -38,6 +38,7 @@
     </div>
 
     <!-- 天梯榜 -->
+    <div v-else-if="error" role="alert" class="rounded-xl bg-red-50 p-4 text-sm text-red-600">{{ error }} <button @click="retry" class="ml-2 underline">重试</button></div>
     <div v-else-if="rankings.length > 0">
       <!-- 统计卡片 -->
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -50,27 +51,27 @@
           <div class="text-purple-100 text-sm mt-1">我的排名</div>
         </div>
         <div class="bg-gradient-to-br from-amber-500 to-orange-500 rounded-2xl p-5 text-white shadow-lg">
-          <div class="text-3xl font-black">{{ myRank ? myRank.total_score : 0 }}</div>
+          <div class="text-3xl font-black">{{ formatScore(myRank?.total_score ?? 0) }}</div>
           <div class="text-amber-100 text-sm mt-1">我的修为</div>
         </div>
       </div>
 
       <!-- 前三名 -->
-      <div v-if="rankings.length >= 3" class="grid grid-cols-3 gap-4 mb-6">
+      <div v-if="rankings.length >= 3" class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <!-- 第二名 -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 text-center">
           <div class="text-4xl mb-2">&#127942;</div>
           <p class="font-bold text-slate-700">{{ rankings[1].student_name }}</p>
-          <p class="text-lg font-black text-slate-600">{{ rankings[1].total_score }}分</p>
+          <p class="text-lg font-black text-slate-600">{{ formatScore(rankings[1].total_score) }}分</p>
           <div class="mt-1 text-sm text-slate-500">
             当前修为：<span class="font-bold" :style="{ color: getRankColor(rankings[1].total_score) }">{{ getRankTitle(rankings[1].total_score) }}</span>
           </div>
         </div>
         <!-- 第一名 -->
-        <div class="bg-gradient-to-b from-amber-50 to-white rounded-2xl shadow-lg border border-amber-100 p-5 text-center -mt-4">
+        <div class="bg-gradient-to-b from-amber-50 to-white rounded-2xl shadow-lg border border-amber-100 p-5 text-center sm:-mt-4">
           <div class="text-5xl mb-2">&#128081;</div>
           <p class="font-bold text-amber-600">{{ rankings[0].student_name }}</p>
-          <p class="text-xl font-black text-amber-500">{{ rankings[0].total_score }}分</p>
+          <p class="text-xl font-black text-amber-500">{{ formatScore(rankings[0].total_score) }}分</p>
           <div class="mt-1 text-sm text-slate-500">
             当前修为：<span class="font-bold" :style="{ color: getRankColor(rankings[0].total_score) }">{{ getRankTitle(rankings[0].total_score) }}</span>
           </div>
@@ -79,7 +80,7 @@
         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5 text-center">
           <div class="text-4xl mb-2">&#127941;</div>
           <p class="font-bold text-slate-700">{{ rankings[2].student_name }}</p>
-          <p class="text-lg font-black text-orange-400">{{ rankings[2].total_score }}分</p>
+          <p class="text-lg font-black text-orange-400">{{ formatScore(rankings[2].total_score) }}分</p>
           <div class="mt-1 text-sm text-slate-500">
             当前修为：<span class="font-bold" :style="{ color: getRankColor(rankings[2].total_score) }">{{ getRankTitle(rankings[2].total_score) }}</span>
           </div>
@@ -104,7 +105,7 @@
                 idx === 0 ? 'bg-amber-400 text-white' :
                 idx === 1 ? 'bg-slate-300 text-white' :
                 'bg-orange-400 text-white']">
-                {{ idx === 0 ? '&#128081;' : idx === 1 ? '&#127942;' : '&#127941;' }}
+                {{ idx === 0 ? '👑' : idx === 1 ? '🏆' : '🥉' }}
               </div>
               <div v-else :class="['w-8 h-8 rounded-full flex items-center justify-center text-sm font-black',
                 isMe(item) ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-500']">
@@ -119,7 +120,7 @@
               </div>
             </div>
             <div class="text-right">
-              <p :class="['text-lg font-black', getRankTextColor(idx)]">{{ item.total_score }}</p>
+              <p :class="['text-lg font-black', getRankTextColor(idx)]">{{ formatScore(item.total_score) }}</p>
               <p class="text-xs" :style="{ color: getRankColor(item.total_score) }">{{ getRankTitle(item.total_score) }}</p>
             </div>
           </div>
@@ -140,7 +141,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onActivated, onDeactivated } from 'vue'
+import { courseOptions, formatScore, studentError } from '../studentHelpers.js'
 import { getStudentRanking, getStudentCourses } from '../api.js'
 
 const user = ref(JSON.parse(sessionStorage.getItem('tc_student_user') || '{}'))
@@ -150,8 +152,11 @@ const rankings = ref([])
 const selectedTerm = ref('')
 const selectedCourseId = ref('')
 const loading = ref(false)
+const error = ref('')
+let requestVersion = 0
+onDeactivated(() => { ++requestVersion; loading.value = false })
 
-const myRank = computed(() => rankings.value.find(r => r.student_id === user.value?.id) || null)
+const myRank = computed(() => rankings.value.find(r => String(r.student_id) === String(user.value?.id)) || null)
 
 const filteredCourses = computed(() => {
   if (!selectedTerm.value) return courses.value
@@ -164,10 +169,13 @@ const selectedCourseName = computed(() => {
 })
 
 function isMe(item) {
-  return item.student_id === user.value?.id
+  return String(item.student_id) === String(user.value?.id)
 }
 
 function onTermChange() {
+  ++requestVersion
+  loading.value = false
+  error.value = ''
   selectedCourseId.value = ''
   rankings.value = []
 }
@@ -216,12 +224,13 @@ function getRankTextColor(idx) {
 async function loadCourses() {
   try {
     const res = await getStudentCourses()
+    if (!res.success) throw new Error(res.message)
     if (res.success) {
       if (res.data && res.data.courses) {
-        courses.value = res.data.courses || []
+        courses.value = courseOptions(res.data)
         terms.value = res.data.terms || []
       } else if (Array.isArray(res.data)) {
-        courses.value = res.data || []
+        courses.value = courseOptions(res.data)
         // 从课程中提取学期
         const termSet = new Set()
         courses.value.forEach(c => { if (c.term) termSet.add(c.term) })
@@ -233,28 +242,41 @@ async function loadCourses() {
       }
     }
   } catch (e) {
-    console.error('加载课程失败', e)
+    error.value = studentError(e, '加载课程失败，请重试')
   }
 }
 
 async function loadRanking() {
+  const version = ++requestVersion
+  error.value = ''
   if (!selectedCourseId.value) {
     rankings.value = []
+    loading.value = false
     return
   }
   loading.value = true
   try {
     const res = await getStudentRanking(selectedCourseId.value, selectedTerm.value)
+    if (version !== requestVersion) return
     if (res.success) rankings.value = res.data?.rankings || []
-    else rankings.value = []
+    else throw new Error(res.message)
   } catch (e) {
+    if (version !== requestVersion) return
+    error.value = studentError(e, '加载天梯榜失败，请重试')
     rankings.value = []
   } finally {
-    loading.value = false
+    if (version === requestVersion) loading.value = false
   }
 }
 
-onMounted(async () => {
-  await loadCourses()
+async function retry() {
+  error.value = ''
+  if (!courses.value.length) await loadCourses()
+  if (selectedCourseId.value) await loadRanking()
+}
+
+onActivated(async () => {
+  if (!courses.value.length) await loadCourses()
+  if (selectedCourseId.value) await loadRanking()
 })
 </script>

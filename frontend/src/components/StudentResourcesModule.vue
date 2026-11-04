@@ -9,7 +9,7 @@
     <div class="flex flex-wrap gap-4 bg-white p-4 rounded-2xl border border-slate-100">
       <div class="flex flex-col gap-1">
         <label class="text-xs text-slate-500 font-medium">学期</label>
-        <select v-model="selectedTerm" @change="loadResources"
+        <select v-model="selectedTerm"
           class="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400">
           <option value="">全部学期</option>
           <option v-for="t in terms" :key="t" :value="t">{{ t }}</option>
@@ -17,21 +17,22 @@
       </div>
       <div class="flex flex-col gap-1">
         <label class="text-xs text-slate-500 font-medium">课程</label>
-        <select v-model="selectedCourse" @change="loadResources"
+        <select v-model="selectedCourse"
           class="border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-400">
           <option value="">全部课程</option>
-          <option v-for="c in studentCourses" :key="c.id" :value="c.id">{{ c.name }}</option>
+          <option v-for="c in filteredCourses" :key="c.id" :value="c.id">{{ c.name }}</option>
         </select>
       </div>
     </div>
 
     <!-- 资源列表 -->
     <div v-if="loading" class="text-center py-12 text-slate-400">加载中...</div>
+    <div v-else-if="error" role="alert" class="rounded-xl bg-red-50 p-4 text-sm text-red-600">{{ error }} <button @click="loadResources" class="underline ml-2">重试</button></div>
     <div v-else-if="filteredResources.length === 0" class="text-center py-12 text-slate-400 bg-white rounded-2xl border border-slate-100">
       暂无课程资源
     </div>
-    <div v-else class="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-      <table class="w-full">
+    <div v-else class="bg-white rounded-2xl border border-slate-100 overflow-x-auto">
+      <table class="w-full min-w-[360px]">
         <thead>
           <tr class="bg-slate-50 border-b border-slate-100">
             <th class="text-left py-3 px-4 text-slate-500 font-medium">资源名称</th>
@@ -73,10 +74,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { getStudentCourseResources, downloadCourseResource } from '../api.js'
+import { ref, computed, onActivated, watch } from 'vue'
+import { courseOptions, studentError } from '../studentHelpers.js'
+import { getStudentCourses, getStudentCourseResources, downloadCourseResource } from '../api.js'
 
-const emit = defineEmits(['message'])
+const error = ref('')
+const studentCourses = ref([])
+let loadVersion = 0
 
 const props = defineProps({
   courses: { type: Array, default: () => [] }
@@ -87,13 +91,15 @@ const resources = ref([])
 const selectedTerm = ref('')
 const selectedCourse = ref('')
 
-// 学生可选的课程（从作业模块传入）
-const studentCourses = computed(() => props.courses)
+const filteredCourses = computed(() => studentCourses.value.filter(c => !selectedTerm.value || c.term === selectedTerm.value))
+watch(selectedTerm, () => {
+  if (!filteredCourses.value.some(c => c.id === selectedCourse.value)) selectedCourse.value = ''
+})
 
 // 学期列表
 const terms = computed(() => {
   const set = new Set()
-  resources.value.forEach(r => { if (r.term) set.add(r.term) })
+  ;[...resources.value, ...studentCourses.value].forEach(r => { if (r.term) set.add(r.term) })
   return [...set].sort().reverse()
 })
 
@@ -101,20 +107,25 @@ const terms = computed(() => {
 const filteredResources = computed(() => {
   return resources.value.filter(r => {
     if (selectedTerm.value && r.term !== selectedTerm.value) return false
-    if (selectedCourse.value && r.course_id !== selectedCourse.value) return false
+    if (selectedCourse.value && String(r.course_id) !== String(selectedCourse.value)) return false
     return true
   })
 })
 
 async function loadResources() {
+  const version = ++loadVersion
+  error.value = ''
   loading.value = true
   try {
-    const res = await getStudentCourseResources({})
+    const [res, courses] = await Promise.all([getStudentCourseResources({}), getStudentCourses()])
+    if (version !== loadVersion) return
+    if (!res.success || !courses.success) throw new Error(res.message || courses.message)
     resources.value = res.data || []
+    studentCourses.value = courseOptions(courses.data)
   } catch (e) {
-    emit('message', { type: 'error', text: '加载资源失败' })
+    if (version === loadVersion) error.value = studentError(e, '加载资源失败，请重试')
   } finally {
-    loading.value = false
+    if (version === loadVersion) loading.value = false
   }
 }
 
@@ -140,5 +151,5 @@ function formatFileSize(bytes) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i]
 }
 
-onMounted(loadResources)
+onActivated(loadResources)
 </script>

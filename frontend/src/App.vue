@@ -102,7 +102,7 @@
       </header>
 
       <!-- Main Content - 懒加载模块 -->
-      <main class="max-w-7xl mx-auto w-full p-6 flex-grow overflow-x-hidden">
+      <main :class="['max-w-7xl mx-auto w-full flex-grow overflow-x-hidden', isStudentMode ? 'p-3 sm:p-6' : 'p-6']">
         <KeepAlive>
           <component 
             :is="currentComponent" 
@@ -231,8 +231,13 @@ const userKey = isAdminMode ? 'tc_admin_user' : isStudentMode ? 'tc_student_user
 const savedToken = sessionStorage.getItem(tokenKey)
 const savedUser = sessionStorage.getItem(userKey)
 if (savedToken && savedUser) {
-  isLoggedIn.value = true
-  teacherUser.value = JSON.parse(savedUser)
+  try {
+    teacherUser.value = JSON.parse(savedUser)
+    isLoggedIn.value = true
+  } catch {
+    sessionStorage.removeItem(tokenKey)
+    sessionStorage.removeItem(userKey)
+  }
 }
 
 const isOnline = ref(navigator.onLine)

@@ -23,8 +23,9 @@ export const apiError = ref(null)
 
 // 请求拦截器 - 添加 Token
 api.interceptors.request.use(config => {
-  // 按优先级：admin > student > teacher
-  const token = sessionStorage.getItem('tc_admin_token') || sessionStorage.getItem('tc_student_token') || sessionStorage.getItem('tc_token')
+  // 同一标签页可能保留多个端的会话，始终使用当前页面所属角色。
+  const key = window.__IS_STUDENT__ ? 'tc_student_token' : window.__IS_ADMIN__ ? 'tc_admin_token' : 'tc_token'
+  const token = sessionStorage.getItem(key)
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -687,11 +688,8 @@ export async function deleteCourseResource(resourceId) {
  * @param {number} resourceId
  */
 export function downloadCourseResource(resourceId) {
-  const studentToken = sessionStorage.getItem('tc_student_token')
-  const teacherToken = sessionStorage.getItem('tc_token')
-  // 根据是否有学生token判断是学生端还是教师端
-  const token = studentToken || teacherToken
-  const isStudent = !!studentToken
+  const isStudent = window.__IS_STUDENT__ === true
+  const token = sessionStorage.getItem(isStudent ? 'tc_student_token' : window.__IS_ADMIN__ ? 'tc_admin_token' : 'tc_token')
   const path = isStudent ? '/student/resources/download' : '/resources/download'
   const url = `${api.defaults.baseURL}${path}/${resourceId}?token=${token}`
   window.open(url, '_blank')
@@ -729,9 +727,11 @@ export async function getStudentHomework(courseId) {
 }
 
 /** 提交作业 */
-export async function submitHomework(homeworkId, formData) {
+export async function submitHomework(homeworkId, formData, onUploadProgress) {
   return await api.post(`/student/homework/${homeworkId}/submit`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+    onUploadProgress
   })
 }
 

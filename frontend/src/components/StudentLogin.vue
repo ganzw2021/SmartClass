@@ -16,7 +16,8 @@
           <div>
             <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">学号</label>
             <input
-              v-model="username"
+              v-model.trim="username"
+              autocomplete="username" inputmode="numeric"
               type="text"
               placeholder="请输入学号"
               class="w-full border-2 border-slate-100 p-3 sm:p-4 rounded-xl outline-none text-slate-700 font-medium focus:border-blue-500 transition-colors text-base"
@@ -28,6 +29,7 @@
             <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">登录密码</label>
             <input
               v-model="password"
+              autocomplete="current-password"
               type="password"
               placeholder="请输入密码"
               class="w-full border-2 border-slate-100 p-3 sm:p-4 rounded-xl outline-none text-slate-700 font-medium focus:border-blue-500 transition-colors text-base"
@@ -68,6 +70,7 @@ const loading = ref(false)
 const error = ref('')
 
 async function handleLogin() {
+  if (loading.value) return
   if (!username.value || !password.value) {
     error.value = '请输入学号和密码'
     return
@@ -82,7 +85,7 @@ async function handleLogin() {
       error.value = res.message || '登录失败，请检查学号和密码'
     }
   } catch (e) {
-    error.value = '网络错误，请稍后重试'
+    error.value = e.response?.data?.message || '网络错误，请稍后重试'
   } finally {
     loading.value = false
   }

@@ -28,6 +28,7 @@
     <!-- 错误 -->
     <div v-else-if="error" class="bg-red-50 border border-red-100 rounded-2xl p-4 text-red-600 text-sm">
       {{ error }}
+      <button @click="loadHomework" class="ml-3 underline">重试</button>
     </div>
 
     <!-- 作业列表 -->
@@ -43,7 +44,7 @@
           isExpired(hw.deadline) ? 'bg-slate-50 border-slate-200' : 'bg-white border-blue-50']"
       >
         <div class="flex items-start justify-between gap-4">
-          <div class="flex-1">
+          <div class="flex-1 min-w-0 break-words">
             <div class="flex items-center gap-2 mb-1 flex-wrap">
               <h4 class="font-bold text-slate-800">{{ hw.title }}</h4>
               <!-- 过期标签 -->
@@ -68,10 +69,10 @@
             <div v-if="hw.submitted && hw.submission" class="mt-3 flex flex-col gap-1 text-xs text-slate-400">
               <div class="flex items-center gap-4">
                 <span v-if="hw.submission.score !== null && hw.submission.score !== undefined">
-                  得分：<strong class="text-blue-600">{{ hw.submission.score }}分</strong>
+                  得分：<strong class="text-blue-600">{{ formatScore(hw.submission.score) }}分</strong>
                 </span>
                 <span v-else-if="hw.submission.auto_score !== null && hw.submission.auto_score !== undefined">
-                  自动评分：<strong class="text-orange-500">{{ hw.submission.auto_score }}分</strong>
+                  自动评分：<strong class="text-orange-500">{{ formatScore(hw.submission.auto_score) }}分</strong>
                 </span>
                 <span>提交于 {{ formatDate(hw.submission.submitted_at) }}</span>
               </div>
@@ -82,7 +83,7 @@
           </div>
 
           <!-- 操作按钮 -->
-          <div class="flex flex-col gap-2">
+          <div class="flex shrink-0 flex-col gap-2">
             <button
               @click="viewDetail(hw)"
               class="px-3 py-1.5 text-xs bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
@@ -108,7 +109,7 @@
               未提交
             </span>
             <span v-if="isExpired(hw.deadline) && hw.submitted" class="px-3 py-1.5 text-xs bg-green-50 text-green-600 rounded-lg text-center">
-              已按时提交
+              已提交
             </span>
           </div>
         </div>
@@ -118,16 +119,16 @@
     <!-- 提交作业弹窗 -->
     <Teleport to="body">
       <div v-if="submitHw" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6">
-        <div class="bg-white rounded-t-3xl sm:rounded-[32px] w-full sm:max-w-lg sm:p-8 p-5 shadow-2xl overflow-y-auto max-h-[90vh] sm:max-h-[85vh]">
+        <div role="dialog" aria-modal="true" aria-labelledby="student-homework-submit-title" class="relative bg-white rounded-t-3xl sm:rounded-[32px] w-full sm:max-w-lg sm:p-8 p-5 shadow-2xl overflow-y-auto max-h-[90vh] sm:max-h-[85vh]">
           <!-- 移动端：顶部拖动条 -->
           <div class="sm:hidden w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4"></div>
           
-          <!-- 关闭按钮（移动端右上角） -->
-          <button @click="submitHw = null" class="sm:hidden absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500">
+          <!-- 上传时保留弹窗，避免丢失提交状态 -->
+          <button type="button" @click="submitHw = null" :disabled="submitting" aria-label="关闭作业提交" class="absolute top-4 right-4 w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 disabled:opacity-40">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
           
-          <h3 class="text-lg font-bold text-slate-800 mb-4 pr-8 sm:pr-0">提交作业：{{ submitHw.title }}</h3>
+          <h3 id="student-homework-submit-title" class="text-lg font-bold text-slate-800 mb-4 pr-10 break-words">提交作业：{{ submitHw.title }}</h3>
 
           <!-- 作业描述 -->
           <div v-if="submitHw.description" class="bg-slate-50 rounded-xl p-4 text-sm text-slate-600 mb-4">
@@ -137,25 +138,26 @@
           <!-- 文件选择 -->
           <div class="mb-4">
             <label class="block text-sm font-bold text-slate-600 mb-2">选择文件</label>
-            <input type="file" @change="handleFileSelect" class="w-full text-sm" />
+            <input type="file" @change="handleFileSelect" :disabled="submitting" class="w-full text-sm" />
+            <p class="mt-2 text-xs text-slate-500">单个文件不超过 90 MB，上传期间请保持页面开启。</p>
           </div>
 
           <!-- 备注 -->
           <div class="mb-4">
             <label class="block text-sm font-bold text-slate-600 mb-2">备注（可选）</label>
-            <textarea v-model="submitNote" rows="2" class="w-full border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-blue-400" placeholder="可填写提交说明..."></textarea>
+            <textarea v-model="submitNote" :disabled="submitting" rows="2" class="w-full border border-slate-200 rounded-xl p-3 text-sm outline-none focus:border-blue-400" placeholder="可填写提交说明..."></textarea>
           </div>
 
           <div v-if="submitError" class="bg-red-50 text-red-600 p-3 rounded-xl text-sm mb-4">{{ submitError }}</div>
 
           <div class="flex gap-3 mt-6">
-            <button @click="submitHw = null" class="flex-1 py-3 border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50">取消</button>
+            <button @click="submitHw = null" :disabled="submitting" class="disabled:opacity-40 flex-1 py-3 border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50">取消</button>
             <button
               @click="doSubmit"
               :disabled="submitting || !selectedFile"
               class="flex-1 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50"
             >
-              {{ submitting ? '提交中...' : '确认提交' }}
+              {{ submitting ? `上传中 ${uploadProgress}%` : '确认提交' }}
             </button>
           </div>
         </div>
@@ -199,9 +201,10 @@
               <div class="flex gap-2">
                 <span class="text-slate-500">提交状态：</span>
                 <span :class="detailHw.submission.score !== null && detailHw.submission.score !== undefined ? 'text-purple-600 font-bold' : 'text-green-600'">
-                  {{ detailHw.submission.score !== null && detailHw.submission.score !== undefined ? `已评分 ${detailHw.submission.score}分` : '已提交' }}
+                  {{ detailHw.submission.score !== null && detailHw.submission.score !== undefined ? `已评分 ${formatScore(detailHw.submission.score)}分` : '已提交' }}
                 </span>
               </div>
+              <p v-if="detailHw.submission.content" class="whitespace-pre-wrap break-words text-slate-600">备注：{{ detailHw.submission.content }}</p>
               <!-- 我提交的文件 -->
               <div v-if="detailHw.submission.attachments?.length" class="flex gap-2">
                 <span class="text-slate-500 shrink-0">我的提交：</span>
@@ -221,12 +224,12 @@
               </div>
               <div v-if="detailHw.submission.auto_score !== null && detailHw.submission.auto_score !== undefined" class="flex gap-2">
                 <span class="text-slate-500">自动评分：</span>
-                <span class="text-blue-600 font-medium">{{ detailHw.submission.auto_score }}分</span>
+                <span class="text-blue-600 font-medium">{{ formatScore(detailHw.submission.auto_score) }}分</span>
               </div>
               <!-- 评分详情（JSON格式） -->
               <div v-if="detailHw.submission.auto_grade_details" class="mt-2 p-2 bg-white rounded-lg text-xs">
                 <div class="text-slate-500 mb-1">评分详情：</div>
-                <pre class="text-slate-600 whitespace-pre-wrap">{{ typeof detailHw.submission.auto_grade_details === 'string' ? detailHw.submission.auto_grade_details : JSON.stringify(detailHw.submission.auto_grade_details, null, 2) }}</pre>
+                <pre class="text-slate-600 whitespace-pre-wrap break-words">{{ typeof detailHw.submission.auto_grade_details === 'string' ? detailHw.submission.auto_grade_details : JSON.stringify(detailHw.submission.auto_grade_details, null, 2) }}</pre>
               </div>
               <!-- 教师评语 -->
               <div v-if="detailHw.submission.feedback" class="flex gap-2">
@@ -246,7 +249,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onActivated, onDeactivated, watch } from 'vue'
+import { courseOptions, formatScore, studentError } from '../studentHelpers.js'
 import { getStudentHomework, getStudentCourses, submitHomework } from '../api.js'
 
 const courses = ref([])
@@ -261,20 +265,25 @@ const selectedFile = ref(null)
 const submitNote = ref('')
 const submitting = ref(false)
 const submitError = ref('')
+const uploadProgress = ref(0)
+let loadVersion = 0
 
 async function loadHomework() {
+  const version = ++loadVersion
+  error.value = ''
   loading.value = true
   try {
     const res = await getStudentHomework(selectedCourseId.value)
+    if (version !== loadVersion) return
     if (res.success) {
       homeworkList.value = res.data || []
     } else {
       error.value = res.message || '加载作业失败'
     }
   } catch (e) {
-    error.value = '网络错误'
+    if (version === loadVersion) error.value = studentError(e)
   } finally {
-    loading.value = false
+    if (version === loadVersion) loading.value = false
   }
 }
 
@@ -284,9 +293,9 @@ async function loadCourses() {
     if (res.success) {
       // 兼容新格式 {courses, terms} 和旧格式 []
       if (res.data && res.data.courses) {
-        courses.value = res.data.courses || []
+        courses.value = courseOptions(res.data)
       } else if (Array.isArray(res.data)) {
-        courses.value = res.data || []
+        courses.value = courseOptions(res.data)
       }
     }
   } catch (e) {}
@@ -294,9 +303,12 @@ async function loadCourses() {
 
 watch(selectedCourseId, loadHomework)
 
-onMounted(async () => {
-  await loadCourses()
-  await loadHomework()
+onMounted(loadCourses)
+onActivated(loadHomework)
+onDeactivated(() => {
+  ++loadVersion
+  detailHw.value = null
+  if (!submitting.value) submitHw.value = null
 })
 
 function viewDetail(hw) {
@@ -304,25 +316,38 @@ function viewDetail(hw) {
 }
 
 function openSubmit(hw) {
+  if (submitting.value) return
   submitHw.value = hw
   selectedFile.value = null
-  submitNote.value = ''
+  submitNote.value = hw.submission?.content || ''
   submitError.value = ''
 }
 
 function handleFileSelect(e) {
-  selectedFile.value = e.target.files[0]
+  const file = e.target.files?.[0]
+  if (file?.size > 90 * 1024 * 1024) {
+    selectedFile.value = null
+    e.target.value = ''
+    submitError.value = '文件超过 90 MB，请压缩后再上传'
+    return
+  }
+  submitError.value = ''
+  selectedFile.value = file || null
 }
 
 async function doSubmit() {
-  if (!selectedFile.value) return
+  if (submitting.value || !submitHw.value || !selectedFile.value) return
+  const homeworkId = submitHw.value.id
+  uploadProgress.value = 0
   submitting.value = true
   submitError.value = ''
   const formData = new FormData()
   formData.append('file', selectedFile.value)
-  if (submitNote.value) formData.append('note', submitNote.value)
+  if (submitNote.value) formData.append('content', submitNote.value)
   try {
-    const res = await submitHomework(submitHw.value.id, formData)
+    const res = await submitHomework(homeworkId, formData, event => {
+      if (event.total) uploadProgress.value = Math.min(100, Math.round(event.loaded * 100 / event.total))
+    })
     if (res.success) {
       submitHw.value = null
       await loadHomework()
@@ -330,15 +355,16 @@ async function doSubmit() {
       submitError.value = res.message || '提交失败'
     }
   } catch (e) {
-    submitError.value = '网络错误'
+    submitError.value = e.code === 'ECONNABORTED' ? '等待超时，请先刷新作业列表确认是否已提交，再决定是否重试' : studentError(e, '上传失败，请检查网络后重试')
   } finally {
     submitting.value = false
   }
 }
 
 function formatDate(d) {
-  if (!d) return ''
+  if (!d) return '未设置截止时间'
   const date = new Date(d)
+  if (Number.isNaN(date.getTime())) return '时间暂不可用'
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`
 }
 
