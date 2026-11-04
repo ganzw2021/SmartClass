@@ -163,16 +163,16 @@
 
       <!-- 作业详情弹窗 -->
       <div v-if="detailHw" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6">
-        <div class="bg-white rounded-t-3xl sm:rounded-[32px] w-full sm:max-w-lg sm:p-8 p-5 shadow-2xl overflow-y-auto max-h-[90vh] sm:max-h-[85vh] relative">
+        <div role="dialog" aria-modal="true" aria-labelledby="student-homework-detail-title" class="bg-white rounded-t-3xl sm:rounded-[32px] w-full sm:max-w-lg sm:p-8 p-5 shadow-2xl overflow-y-auto max-h-[90vh] sm:max-h-[85vh] relative">
           <!-- 移动端：顶部拖动条 -->
           <div class="sm:hidden w-12 h-1 bg-slate-300 rounded-full mx-auto mb-4"></div>
           
-          <!-- 关闭按钮（移动端右上角） -->
-          <button @click="detailHw = null" class="sm:hidden absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-500">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-          </button>
-          
-          <h3 class="text-lg font-bold text-slate-800 mb-4 pr-8 sm:pr-0">{{ detailHw.title }}</h3>
+          <div class="sticky top-0 z-10 flex items-start justify-between gap-3 bg-white pb-4">
+            <h3 id="student-homework-detail-title" class="min-w-0 break-words text-lg font-bold text-slate-800">{{ detailHw.title }}</h3>
+            <button type="button" @click="detailHw = null" aria-label="关闭作业详情" title="关闭" class="shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">
+              <svg aria-hidden="true" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
+          </div>
           <div class="space-y-3 text-sm">
             <div class="flex gap-2">
               <span class="text-slate-500">课程：</span><span class="text-slate-700 font-medium">{{ detailHw.course_name }}</span>
@@ -238,7 +238,7 @@
               </div>
             </div>
           </div>
-          <button @click="detailHw = null" class="mt-6 w-full py-3 border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50 sm:hidden">关闭</button>
+          <button type="button" @click="detailHw = null" class="mt-6 w-full py-3 border border-slate-200 rounded-xl text-slate-600 hover:bg-slate-50">关闭</button>
         </div>
       </div>
     </Teleport>
