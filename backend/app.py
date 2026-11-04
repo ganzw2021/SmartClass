@@ -1681,7 +1681,7 @@ def _run_grading(script_path, files, hid, sid, total_score):
         inp=json.dumps({'file_path': file_path, 'files': files, 'homework_id': hid, 'submission_id': sid})
         env=os.environ.copy(); env['PYTHONIOENCODING']='utf-8'; env['PYTHONUTF8']='1'
         # 用 bytes 捕获避免 Windows GBK 编码问题，手动 decode 为 utf-8
-        res=subprocess.run(['python', script_path], input=inp.encode('utf-8'), capture_output=True, timeout=60, cwd=os.path.dirname(script_path), env=env)
+        res=subprocess.run([sys.executable, script_path], input=inp.encode('utf-8'), capture_output=True, timeout=60, cwd=os.path.dirname(script_path), env=env)
         out=res.stdout.decode('utf-8', errors='replace').strip()
         if res.returncode!=0: raise Exception(f"Script error: {res.stderr.decode('utf-8', errors='replace')}")
         gr=json.loads(out) if out else {}
