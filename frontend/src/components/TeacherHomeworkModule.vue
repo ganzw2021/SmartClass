@@ -84,7 +84,7 @@
         <div class="bg-white rounded-[24px] w-full max-w-lg p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
           <div class="flex items-center justify-between mb-6">
             <h3 class="text-xl font-bold text-slate-800">{{ editingHomework ? '编辑作业' : '发布作业' }}</h3>
-            <button @click="closeCreateModal" class="text-slate-400 hover:text-slate-600">
+            <button type="button" @click="closeCreateModal" :disabled="submitting" class="text-slate-400 hover:text-slate-600">
               <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -92,6 +92,8 @@
           </div>
 
           <form @submit.prevent="submitHomework" class="space-y-4">
+            <p v-if="editLoading" class="text-sm text-slate-500">正在加载最新附件和脚本…</p>
+            <p v-if="editError" role="alert" class="text-sm text-red-600">{{ editError }}</p>
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1.5">作业标题 *</label>
               <input v-model="formData.title" type="text" required placeholder="请输入作业标题" class="w-full border-2 border-slate-100 rounded-xl px-4 py-2.5 outline-none focus:border-[#2d6a4f] transition-colors">
@@ -137,13 +139,14 @@
               <label class="block text-sm font-medium text-slate-700 mb-1.5">附件（作业材料）</label>
               <!-- 编辑时显示已有附件 -->
               <div v-if="editingHomework?.attachments?.length > 0" class="mb-3 space-y-2">
-                <p class="text-xs text-slate-500 font-medium">已有附件：</p>
+                <p class="text-xs text-slate-500 font-medium">已有附件（删除在保存修改后生效，可重新选择文件上传）：</p>
                 <div v-for="att in editingHomework.attachments" :key="att.id" class="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2">
                   <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-slate-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  <span class="text-sm text-slate-600 truncate flex-1">{{ att.file_name || att.original_name || '附件' }}</span>
+                  <span :class="['text-sm text-slate-600 truncate flex-1', removedAttachmentIds.includes(att.id) ? 'line-through opacity-50' : '']">{{ att.file_name || att.original_name || '附件' }}</span>
                   <a :href="`/api/homework/attachments/${att.id}/download?token=${getToken()}`" target="_blank" class="text-blue-500 hover:text-blue-600 text-xs flex-shrink-0">下载</a>
+                  <button type="button" @click="toggleAttachmentRemoval(att.id)" :disabled="submitting || editLoading" class="text-xs text-red-600 shrink-0 disabled:opacity-50">{{ removedAttachmentIds.includes(att.id) ? '撤销删除' : '删除' }}</button>
                 </div>
               </div>
               <div class="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center hover:border-[#2d6a4f] transition-colors">
@@ -152,18 +155,28 @@
                   <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 mx-auto text-slate-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                   </svg>
-                  <span class="text-sm text-slate-500">点击选择文件或拖拽文件到此处</span>
+                  <span class="text-sm text-slate-500">点击选择文件，可多次添加</span>
                 </label>
                 <div v-if="selectedFiles.length > 0" class="mt-3 space-y-2">
                   <div v-for="(file, idx) in selectedFiles" :key="idx" class="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
                     <span class="text-sm text-slate-600 truncate max-w-[200px]">{{ file.name }}</span>
-                    <button @click="removeFile(idx)" class="text-red-500 hover:text-red-600 ml-2">✕</button>
+                    <button type="button" @click="removeFile(idx)" class="text-red-500 hover:text-red-600 ml-2">✕</button>
                   </div>
                 </div>
               </div>
             </div>
 
-            <!-- 评分脚本上传（仅创建时可用，编辑时在详情页操作） -->
+            <!-- 编辑时管理脚本删除，保存后生效 -->
+            <div v-if="editingHomework" class="rounded-xl border border-orange-100 bg-orange-50/40 p-4">
+              <h4 class="text-sm font-medium text-slate-700 mb-2">自动评分脚本</h4>
+              <div v-if="editingHomework.grading_script_info?.has_grading_script" class="flex items-center gap-3">
+                <span :class="['flex-1 min-w-0 break-words text-sm', removeEditingScript ? 'line-through text-slate-400' : 'text-slate-700']">{{ editingHomework.grading_script_info.script_name || '已上传的评分脚本' }}</span>
+                <button type="button" @click="toggleScriptRemoval" :disabled="submitting || editLoading" class="shrink-0 text-xs text-red-600 disabled:opacity-50">{{ removeEditingScript ? '撤销删除' : '删除脚本' }}</button>
+              </div>
+              <p v-else class="text-xs text-slate-500">暂无自动评分脚本</p>
+              <p v-if="removeEditingScript" class="mt-2 text-xs text-orange-600">保存后删除脚本并关闭自动评分，已有评分保留。之后可在作业详情中重新上传脚本。</p>
+            </div>
+            <!-- 创建时选择评分脚本 -->
             <div v-if="!editingHomework">
               <label class="block text-sm font-medium text-slate-700 mb-1.5">自动评分脚本（可选）</label>
               <div class="border-2 border-dashed border-orange-200 bg-orange-50/50 rounded-xl p-4 text-center hover:border-orange-400 transition-colors">
@@ -182,7 +195,7 @@
                     </svg>
                     <span class="text-sm text-slate-600">{{ createScriptFile.name }}</span>
                   </div>
-                  <button @click="createScriptFile = null" class="text-red-500 hover:text-red-600">✕</button>
+                  <button type="button" @click="createScriptFile = null" class="text-red-500 hover:text-red-600">✕</button>
                 </div>
                 <div v-if="createScriptFile" class="mt-2">
                   <label class="flex items-center gap-2 cursor-pointer">
@@ -194,10 +207,10 @@
             </div>
 
             <div class="flex gap-3 pt-4">
-              <button type="button" @click="closeCreateModal" class="flex-1 border-2 border-slate-200 text-slate-600 py-3 rounded-xl font-medium hover:bg-slate-50 transition-colors">
+              <button type="button" @click="closeCreateModal" :disabled="submitting" class="flex-1 border-2 border-slate-200 text-slate-600 py-3 rounded-xl font-medium hover:bg-slate-50 transition-colors">
                 取消
               </button>
-              <button type="submit" :disabled="submitting" class="flex-1 bg-[#2d6a4f] hover:bg-[#245a42] disabled:bg-slate-300 text-white py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2">
+              <button type="submit" :disabled="submitting || editLoading || !!editError" class="flex-1 bg-[#2d6a4f] hover:bg-[#245a42] disabled:bg-slate-300 text-white py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2">
                 <span v-if="submitting" class="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full"></span>
                 {{ editingHomework ? '保存修改' : '发布作业' }}
               </button>
@@ -281,7 +294,7 @@
                     下载
                   </button>
                   <button @click="regradeAll" :disabled="scriptUploading" class="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm transition-colors disabled:opacity-50">重新评分</button>
-                  <button @click="confirmDeleteScript" class="px-3 py-1.5 text-red-500 hover:bg-red-50 rounded-lg text-sm transition-colors">删除</button>
+                  <span class="text-xs text-slate-400">删除请进入编辑作业</span>
                 </div>
               </div>
             </div>
@@ -501,7 +514,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { getHomeworkList, getHomeworkDetail, getHomeworkSubmissions, createHomework, updateHomework, deleteHomework as apiDeleteHomework, gradeHomework, uploadGradingScript, getGradingScript, getGradingScriptContent, toggleGradingAuto, deleteGradingScript, downloadGradingScript, exportHomeworkReports } from '../api.js'
+import { getHomeworkList, getHomeworkDetail, getHomeworkSubmissions, createHomework, updateHomework, deleteHomework as apiDeleteHomework, gradeHomework, uploadGradingScript, getGradingScript, getGradingScriptContent, toggleGradingAuto, downloadGradingScript, exportHomeworkReports } from '../api.js'
 
 const props = defineProps({
   courses: { type: Array, default: () => [] },
@@ -533,6 +546,11 @@ function onFilterCourseChange() {
 // 创建/编辑弹窗
 const showCreateModal = ref(false)
 const editingHomework = ref(null)
+const removedAttachmentIds = ref([])
+const removeEditingScript = ref(false)
+const editLoading = ref(false)
+const editError = ref('')
+let editVersion = 0
 const submitting = ref(false)
 const formData = ref({
   title: '',
@@ -608,6 +626,7 @@ function downloadSubmissionAttachment(att) {
 function handleFileSelect(e) {
   const files = Array.from(e.target.files)
   selectedFiles.value = [...selectedFiles.value, ...files]
+  e.target.value = ''
 }
 
 function removeFile(idx) {
@@ -676,6 +695,11 @@ function formatDate(dateStr) {
 }
 
 function closeCreateModal() {
+  ++editVersion
+  removedAttachmentIds.value = []
+  removeEditingScript.value = false
+  editLoading.value = false
+  editError.value = ''
   showCreateModal.value = false
   editingHomework.value = null
   formData.value = { title: '', course_id: '', class_id: '', content: '', deadline: '', total_score: 100 }
@@ -684,21 +708,57 @@ function closeCreateModal() {
   createEnableAutoGrade.value = false
 }
 
-function editHomework(hw) {
-  editingHomework.value = hw
+async function editHomework(hw) {
+  const version = ++editVersion
+  removedAttachmentIds.value = []
+  removeEditingScript.value = false
+  createScriptFile.value = null
+  editError.value = ''
+  editLoading.value = true
+  editingHomework.value = { ...hw, attachments: [...(hw.attachments || [])] }
   formData.value = {
     title: hw.title,
     course_id: hw.course_id,
     class_id: hw.class_id || '',
     content: hw.content || '',
-    deadline: hw.deadline ? new Date(hw.deadline).toISOString().slice(0, 16) : '',
+    deadline: deadlineForInput(hw.deadline),
     total_score: hw.total_score || 100
   }
   selectedFiles.value = []
   showCreateModal.value = true
+  try {
+    const res = await getHomeworkDetail(hw.id)
+    if (version !== editVersion) return
+    if (!res.success || !res.data) throw new Error(res.message || '作业详情加载失败')
+    editingHomework.value = res.data
+  } catch (e) {
+    if (version === editVersion) editError.value = e.response?.data?.message || e.message || '加载失败，请关闭后重试'
+  } finally {
+    if (version === editVersion) editLoading.value = false
+  }
+}
+
+function deadlineForInput(value) {
+  if (!value) return ''
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  const pad = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function toggleAttachmentRemoval(id) {
+  if (!showCreateModal.value || !editingHomework.value || submitting.value || editLoading.value) return
+  removedAttachmentIds.value = removedAttachmentIds.value.includes(id)
+    ? removedAttachmentIds.value.filter(value => value !== id) : [...removedAttachmentIds.value, id]
+}
+
+function toggleScriptRemoval() {
+  if (!showCreateModal.value || !editingHomework.value || submitting.value || editLoading.value) return
+  removeEditingScript.value = !removeEditingScript.value
 }
 
 async function submitHomework() {
+  if (submitting.value || editLoading.value || editError.value) return
   submitting.value = true
   try {
     const fd = new FormData()
@@ -716,6 +776,8 @@ async function submitHomework() {
 
     let res
     if (editingHomework.value) {
+      fd.append('remove_attachment_ids', JSON.stringify(removedAttachmentIds.value))
+      fd.append('remove_grading_script', removeEditingScript.value ? 'true' : 'false')
       res = await updateHomework(editingHomework.value.id, fd)
     } else {
       res = await createHomework(fd)
@@ -737,7 +799,11 @@ async function submitHomework() {
       selectedFiles.value = []
       createScriptFile.value = null
       createEnableAutoGrade.value = false
-      loadHomework()
+      await loadHomework()
+      if (showDetailModal.value && currentHomework.value?.id === hwId) {
+        const latest = homeworkList.value.find(hw => hw.id === hwId)
+        if (latest) await viewHomework(latest)
+      }
     } else {
       alert(res.message || '操作失败')
     }
@@ -838,7 +904,11 @@ async function deleteHomework() {
     const res = await apiDeleteHomework(deletingHomework.value.id)
     if (res.success) {
       showDeleteModal.value = false
-      loadHomework()
+      await loadHomework()
+      if (showDetailModal.value && currentHomework.value?.id === hwId) {
+        const latest = homeworkList.value.find(hw => hw.id === hwId)
+        if (latest) await viewHomework(latest)
+      }
     } else {
       alert(res.message || '删除失败')
     }
@@ -952,24 +1022,6 @@ async function regradeAll() {
 function handleDownloadScript() {
   if (currentHomework.value?.id) {
     downloadGradingScript(currentHomework.value.id)
-  }
-}
-
-async function confirmDeleteScript() {
-  if (!confirm('确定要删除评分脚本吗？')) return
-
-  try {
-    const res = await deleteGradingScript(currentHomework.value.id)
-    if (res.success) {
-      gradingScript.value = null
-      gradingAutoEnabled.value = false
-      alert('评分脚本已删除')
-    } else {
-      alert(res.message || '删除失败')
-    }
-  } catch (e) {
-    console.error('删除评分脚本失败', e)
-    alert('删除失败')
   }
 }
 

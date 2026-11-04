@@ -1362,6 +1362,15 @@ def create_homework():
 @teacher_required
 def update_homework(hid):
     ct=request.content_type or ''
+    data=request.form if 'multipart' in ct else (request.get_json() or {})
+    try:
+        remove_ids=data.get('remove_attachment_ids',[])
+        if isinstance(remove_ids,str): remove_ids=json.loads(remove_ids)
+        if not isinstance(remove_ids,list) or any(type(x) is not int or x<=0 for x in remove_ids):
+            return err('附件删除列表格式错误')
+        remove_ids=list(set(remove_ids))
+    except (ValueError,TypeError): return err('附件删除列表格式错误')
+    remove_script=data.get('remove_grading_script',False) in (True,'true','1',1)
     if 'multipart' in ct:
         title=request.form.get('title','').strip(); content=request.form.get('content','').strip()
         dl=request.form.get('deadline',''); ts=int(request.form.get('total_score',100))
@@ -1369,14 +1378,51 @@ def update_homework(hid):
         d=request.get_json() or {}; title=(d.get('title') or '').strip(); content=(d.get('content') or '').strip()
         dl=d.get('deadline',''); ts=int(d.get('total_score',100))
     db=get_db(); cur=db.cursor()
-    cur.execute("UPDATE homework SET title=%s,content=%s,deadline=%s,total_score=%s WHERE id=%s AND teacher_id=%s",(title,content,_parse_deadline(dl),ts,hid,request.teacher_id))
-    if 'multipart' in ct:
-        for f in request.files.getlist('files'):
-            if f.filename:
-                fn=f.filename; sn=f"{uuid.uuid4().hex}{os.path.splitext(fn)[1]}"
-                fp=os.path.join(UPLOAD_DIR,'homework',sn); f.save(fp)
-                cur.execute("INSERT INTO homework_attachments (homework_id,file_name,file_path,file_size) VALUES (%s,%s,%s,%s)",(hid,fn,fp,os.path.getsize(fp)))
-    db.close(); return success()
+    new_paths=[];old_paths=[]
+    try:
+        db.begin()
+        cur.execute('SELECT id FROM homework WHERE id=%s AND teacher_id=%s FOR UPDATE',(hid,request.teacher_id))
+        if not cur.fetchone(): db.rollback();return err('作业不存在或无权限',404)
+        if remove_ids:
+            slots=','.join(['%s']*len(remove_ids))
+            cur.execute(f'SELECT id,file_path FROM homework_attachments WHERE homework_id=%s AND id IN ({slots}) FOR UPDATE',[hid]+remove_ids)
+            removed=cur.fetchall()
+            if {r['id'] for r in removed}!=set(remove_ids):
+                db.rollback();return err('要删除的附件不存在或不属于当前作业')
+            old_paths=[r['file_path'] for r in removed]
+            cur.execute(f'DELETE FROM homework_attachments WHERE homework_id=%s AND id IN ({slots})',[hid]+remove_ids)
+        cur.execute('UPDATE homework SET title=%s,content=%s,deadline=%s,total_score=%s WHERE id=%s',(title,content,_parse_deadline(dl),ts,hid))
+        if remove_script:
+            cur.execute('DELETE FROM homework_grading_scripts WHERE homework_id=%s',(hid,))
+            cur.execute('UPDATE homework SET has_grading_script=0,auto_grade_enabled=0 WHERE id=%s',(hid,))
+        if 'multipart' in ct:
+            for f in request.files.getlist('files'):
+                if f.filename:
+                    fn=f.filename;sn=f"{uuid.uuid4().hex}{os.path.splitext(fn)[1]}"
+                    fp=os.path.join(UPLOAD_DIR,'homework',sn);new_paths.append(fp);f.save(fp)
+                    cur.execute('INSERT INTO homework_attachments (homework_id,file_name,file_path,file_size) VALUES (%s,%s,%s,%s)',(hid,fn,fp,os.path.getsize(fp)))
+        db.commit()
+    except Exception:
+        db.rollback()
+        _remove_homework_files(new_paths)
+        logger.exception('保存作业修改失败: homework_id=%s',hid)
+        return err('保存失败，请稍后重试',500)
+    finally:
+        db.close()
+    _remove_homework_files(old_paths)
+    return success()
+
+
+def _remove_homework_files(paths):
+    root=os.path.realpath(os.path.join(UPLOAD_DIR,'homework'))
+    for path in paths:
+        if not path: continue
+        candidate=os.path.realpath(path if os.path.isabs(path) else os.path.join(UPLOAD_DIR,path))
+        if os.path.commonpath([root,candidate])!=root: continue
+        try:
+            if os.path.isfile(candidate): os.remove(candidate)
+        except OSError:
+            logger.warning('作业附件清理失败: %s',candidate)
 
 @app.route('/api/homework/<int:hid>', methods=['DELETE'])
 @teacher_required
