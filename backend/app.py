@@ -1667,6 +1667,7 @@ def _run_grading(script_path, files, hid, sid, total_score):
     try:
         db=get_db(); cur=db.cursor()
         cur.execute("UPDATE homework_submissions SET grading_status='grading' WHERE id=%s",(sid,))
+        if not cur.rowcount: db.close(); return
         db.close()
         # 取第一个文件的绝对路径传给脚本（评分脚本规范：stdin 接收 file_path）
         # file_path 在数据库中存的是 "submissions/xxx.xlsx"（相对 uploads 目录）
@@ -1700,6 +1701,7 @@ def _run_grading(script_path, files, hid, sid, total_score):
             msg=script_msg
         db2=get_db(); cur2=db2.cursor()
         cur2.execute("UPDATE homework_submissions SET grading_status='done',auto_score=%s,auto_grade_message=%s,auto_grade_details=%s,score=%s,graded_at=NOW() WHERE id=%s",(auto_score,msg,json.dumps(details,ensure_ascii=False),norm,sid))
+        if not cur2.rowcount: db2.close(); return
         cur2.execute("SELECT h.class_id,hs.student_id,hs.student_name FROM homework h JOIN homework_submissions hs ON hs.homework_id=h.id WHERE hs.id=%s",(sid,))
         info=cur2.fetchone()
         if info and info['class_id']:
@@ -2548,15 +2550,106 @@ def stu_courses():
     courses=_rows(cur.fetchall())
     db.close(); return success({'courses': courses, 'terms': terms})
 
+class _SubmissionDB:
+    """Keep the request's advisory lock and SQL on a single pooled connection."""
+    def __init__(self, db): self.db=db
+    def close(self): pass
+    def __getattr__(self, name): return getattr(self.db,name)
+
+
+def _student_submission_action(f):
+    """Serialize submit/withdraw for one student and homework across workers."""
+    @wraps(f)
+    def locked(hid, *args, **kwargs):
+        db=get_db(); cur=db.cursor()
+        key=f'smartclass:submission:{request.teacher_id}:{hid}'
+        acquired=False
+        try:
+            cur.execute('SELECT GET_LOCK(%s,0) AS acquired',(key,))
+            acquired=cur.fetchone()['acquired']==1
+            if not acquired: return err('该作业正在处理，请稍后重试',409)
+            request.submission_db=_SubmissionDB(db)
+            return f(hid,*args,**kwargs)
+        finally:
+            if acquired: cur.execute('SELECT RELEASE_LOCK(%s)',(key,))
+            db.close()
+    return locked
+
+
+def _refresh_homework_ranking(cur, class_id, student_id, student_name):
+    if not class_id: return
+    cur.execute("""SELECT COALESCE(SUM(score),0) AS total,COUNT(*) AS cnt FROM (
+        SELECT hs.score,ROW_NUMBER() OVER (
+            PARTITION BY hs.homework_id ORDER BY hs.submitted_at DESC,hs.id DESC) AS rn
+        FROM homework_submissions hs JOIN homework h ON h.id=hs.homework_id
+        WHERE hs.student_id=%s AND h.class_id=%s AND hs.score IS NOT NULL
+    ) latest WHERE rn=1""",(student_id,class_id))
+    stats=cur.fetchone()
+    cur.execute('SELECT id FROM homework_score_ranking WHERE class_id=%s AND student_id=%s FOR UPDATE',(class_id,student_id))
+    existing=cur.fetchone()
+    if existing:
+        cur.execute('UPDATE homework_score_ranking SET total_score=%s,homework_count=%s WHERE id=%s',(stats['total'],stats['cnt'],existing['id']))
+    else:
+        cur.execute('INSERT INTO homework_score_ranking (class_id,student_id,student_name,total_score,homework_count) VALUES (%s,%s,%s,%s,%s)',(class_id,student_id,student_name,stats['total'],stats['cnt']))
+
+
+def _remove_withdrawn_files(paths):
+    root=os.path.realpath(os.path.join(UPLOAD_DIR,'submissions'))
+    for path in paths:
+        if not path: continue
+        candidate=os.path.realpath(path if os.path.isabs(path) else os.path.join(UPLOAD_DIR,path))
+        if os.path.commonpath([root,candidate])!=root: continue
+        try:
+            if os.path.isfile(candidate): os.remove(candidate)
+        except OSError:
+            logger.warning('撤回附件清理失败: %s',candidate)
+
+
+@app.route('/api/student/homework/<int:hid>/withdraw', methods=['POST'])
+@student_required
+@_student_submission_action
+def stu_withdraw_homework(hid):
+    if get_user(request).get('role')!='student': return err('仅学生本人可撤回提交',403)
+    db=request.submission_db;cur=db.cursor()
+    try:
+        db.begin()
+        cur.execute("""SELECT h.class_id FROM homework h WHERE h.id=%s AND h.is_published=1
+          AND (EXISTS (SELECT 1 FROM class_students cs WHERE cs.class_id=h.class_id AND cs.student_id=%s)
+          OR (h.class_id IS NULL AND EXISTS (SELECT 1 FROM course_classes cc JOIN class_students cs ON cs.class_id=cc.class_id WHERE cc.course_id=h.course_id AND cs.student_id=%s)))""",(hid,request.teacher_id,request.teacher_id))
+        hw=cur.fetchone()
+        if not hw: db.rollback();return err('无权撤回该作业',403)
+        cur.execute('SELECT id,student_name FROM homework_submissions WHERE homework_id=%s AND student_id=%s FOR UPDATE',(hid,request.teacher_id))
+        submissions=cur.fetchall()
+        if not submissions: db.rollback();return err('当前没有可撤回的提交',409)
+        ids=[s['id'] for s in submissions]
+        slots=','.join(['%s']*len(ids))
+        cur.execute(f'SELECT file_path FROM submission_attachments WHERE submission_id IN ({slots})',ids)
+        paths=[row['file_path'] for row in cur.fetchall()]
+        cur.execute(f'DELETE FROM submission_attachments WHERE submission_id IN ({slots})',ids)
+        # New submissions receive a new ID, so an old grader cannot restore a withdrawn score.
+        cur.execute(f'DELETE FROM homework_submissions WHERE id IN ({slots})',ids)
+        _refresh_homework_ranking(cur,hw['class_id'],request.teacher_id,submissions[0]['student_name'])
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception('撤回作业失败: homework_id=%s, student_id=%s',hid,request.teacher_id)
+        return err('撤回失败，请稍后重试',500)
+    finally:
+        db.close()
+    _remove_withdrawn_files(paths)
+    return success({'submitted':False,'score':0.0,'message':'已撤回提交，该作业计0.0分，天梯榜已更新'})
+
+
 @app.route('/api/student/homework/<int:hid>/submit', methods=['POST'])
 @student_required
+@_student_submission_action
 def stu_submit_homework(hid):
     ct=request.content_type or ''
     if 'multipart' in ct:
         content=request.form.get('content','').strip()
     else:
         content=(request.get_json() or {}).get('content','')
-    db=get_db(); cur=db.cursor()
+    db=request.submission_db; cur=db.cursor()
     cur.execute("""SELECT 1 FROM homework h JOIN class_students csm ON csm.class_id=h.class_id
                    WHERE h.id=%s AND h.is_published=1 AND csm.student_id=%s LIMIT 1""",(hid,request.teacher_id))
     if not cur.fetchone(): db.close(); return err('无权提交该教学班作业',403)

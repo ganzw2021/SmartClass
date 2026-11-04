@@ -727,6 +727,10 @@ export async function getStudentHomework(courseId) {
 }
 
 /** 提交作业 */
+export async function withdrawHomework(homeworkId) {
+  return await api.post(`/student/homework/${homeworkId}/withdraw`)
+}
+
 export async function submitHomework(homeworkId, formData, onUploadProgress) {
   return await api.post(`/student/homework/${homeworkId}/submit`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

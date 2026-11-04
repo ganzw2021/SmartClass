@@ -66,6 +66,7 @@
             <p v-if="hw.description" class="text-sm text-slate-400 line-clamp-2">{{ hw.description }}</p>
 
             <!-- 提交信息 -->
+            <p v-if="!hw.submitted" class="mt-3 text-xs text-slate-500">作业得分：0.0分（未提交）</p>
             <div v-if="hw.submitted && hw.submission" class="mt-3 flex flex-col gap-1 text-xs text-slate-400">
               <div class="flex items-center gap-4">
                 <span v-if="hw.submission.score !== null && hw.submission.score !== undefined">
@@ -105,6 +106,9 @@
               重新提交
             </button>
             <!-- 已过期提示 -->
+            <button v-if="hw.submitted" @click="withdrawSubmission(hw)" :disabled="withdrawingId !== null || submitting" class="px-3 py-1.5 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 disabled:opacity-50">
+              {{ withdrawingId === hw.id ? '撤回中…' : '撤回提交' }}
+            </button>
             <span v-if="isExpired(hw.deadline) && !hw.submitted" class="px-3 py-1.5 text-xs bg-red-50 text-red-400 rounded-lg text-center">
               未提交
             </span>
@@ -176,6 +180,7 @@
             </button>
           </div>
           <div class="space-y-3 text-sm">
+            <p v-if="!detailHw.submission" class="text-slate-500">未提交，当前作业计 0.0 分。</p>
             <div class="flex gap-2">
               <span class="text-slate-500">课程：</span><span class="text-slate-700 font-medium">{{ detailHw.course_name }}</span>
             </div>
@@ -251,7 +256,7 @@
 <script setup>
 import { ref, onMounted, onActivated, onDeactivated, watch } from 'vue'
 import { courseOptions, formatScore, studentError } from '../studentHelpers.js'
-import { getStudentHomework, getStudentCourses, submitHomework } from '../api.js'
+import { getStudentHomework, getStudentCourses, submitHomework, withdrawHomework } from '../api.js'
 
 const courses = ref([])
 const homeworkList = ref([])
@@ -266,6 +271,7 @@ const submitNote = ref('')
 const submitting = ref(false)
 const submitError = ref('')
 const uploadProgress = ref(0)
+const withdrawingId = ref(null)
 let loadVersion = 0
 
 async function loadHomework() {
@@ -316,11 +322,30 @@ function viewDetail(hw) {
 }
 
 function openSubmit(hw) {
-  if (submitting.value) return
+  if (submitting.value || withdrawingId.value !== null) return
   submitHw.value = hw
   selectedFile.value = null
   submitNote.value = hw.submission?.content || ''
   submitError.value = ''
+}
+
+async function withdrawSubmission(hw) {
+  if (!hw.submitted || submitting.value || withdrawingId.value !== null) return
+  const deadlineHint = isExpired(hw.deadline) ? '该作业已截止，撤回后将无法再次提交。' : '截止前可重新提交。'
+  if (!window.confirm(`确定撤回「${hw.title}」吗？本次提交及评分将取消，该作业计0.0分，并同步更新天梯榜。${deadlineHint}`)) return
+  withdrawingId.value = hw.id
+  try {
+    const res = await withdrawHomework(hw.id)
+    if (!res.success) throw new Error(res.message || '撤回失败')
+    hw.submitted = false
+    hw.submission = null
+    if (detailHw.value?.id === hw.id) detailHw.value = null
+    await loadHomework()
+  } catch (e) {
+    error.value = studentError(e, e.message || '撤回失败，请稍后重试')
+  } finally {
+    withdrawingId.value = null
+  }
 }
 
 function handleFileSelect(e) {
