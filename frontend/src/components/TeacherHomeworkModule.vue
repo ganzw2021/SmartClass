@@ -174,19 +174,19 @@
                 <button type="button" @click="toggleScriptRemoval" :disabled="submitting || editLoading" class="shrink-0 text-xs text-red-600 disabled:opacity-50">{{ removeEditingScript ? '撤销删除' : '删除脚本' }}</button>
               </div>
               <p v-else class="text-xs text-slate-500">暂无自动评分脚本</p>
-              <p v-if="removeEditingScript" class="mt-2 text-xs text-orange-600">保存后删除脚本并关闭自动评分，已有评分保留。之后可在作业详情中重新上传脚本。</p>
+              <p v-if="removeEditingScript" class="mt-2 text-xs text-orange-600">保存后删除脚本并关闭自动评分，已有评分保留。可在下方选择新脚本重新上传。</p>
             </div>
-            <!-- 创建时选择评分脚本 -->
-            <div v-if="!editingHomework">
-              <label class="block text-sm font-medium text-slate-700 mb-1.5">自动评分脚本（可选）</label>
+            <!-- 创建和编辑时选择评分脚本，保存后生效 -->
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-1.5">{{ editingHomework ? '上传或替换评分脚本' : '自动评分脚本（可选）' }}</label>
               <div class="border-2 border-dashed border-orange-200 bg-orange-50/50 rounded-xl p-4 text-center hover:border-orange-400 transition-colors">
-                <input type="file" id="create-script" @change="handleCreateScriptUpload" accept=".py" class="hidden">
+                <input type="file" id="create-script" @change="handleCreateScriptUpload" :disabled="submitting || editLoading" accept=".py" class="hidden">
                 <label for="create-script" class="cursor-pointer">
                   <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 mx-auto text-orange-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
                   </svg>
                   <span class="text-sm text-orange-600">点击上传 Python 评分脚本</span>
-                  <p class="text-xs text-orange-400 mt-1">用于自动批改学生提交的Python文件作业</p>
+                  <p class="text-xs text-orange-400 mt-1">{{ editingHomework ? '保存修改后生效，已有脚本将被替换，已有评分保留' : '用于自动批改学生提交的Python文件作业' }}</p>
                 </label>
                 <div v-if="createScriptFile" class="mt-3 flex items-center justify-between bg-white rounded-lg px-3 py-2">
                   <div class="flex items-center gap-2">
@@ -195,7 +195,7 @@
                     </svg>
                     <span class="text-sm text-slate-600">{{ createScriptFile.name }}</span>
                   </div>
-                  <button type="button" @click="createScriptFile = null" class="text-red-500 hover:text-red-600">✕</button>
+                  <button type="button" :disabled="submitting" @click="createScriptFile = null" class="text-red-500 hover:text-red-600">✕</button>
                 </div>
                 <div v-if="createScriptFile" class="mt-2">
                   <label class="flex items-center gap-2 cursor-pointer">
@@ -294,21 +294,12 @@
                     下载
                   </button>
                   <button @click="regradeAll" :disabled="scriptUploading" class="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-sm transition-colors disabled:opacity-50">重新评分</button>
-                  <span class="text-xs text-slate-400">删除请进入编辑作业</span>
+                  <span class="text-xs text-slate-400">上传、替换或删除请进入编辑作业</span>
                 </div>
               </div>
             </div>
             
-            <div v-else class="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center">
-              <input type="file" id="grading-script" @change="handleScriptUpload" accept=".py" class="hidden">
-              <label for="grading-script" class="cursor-pointer block">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 mx-auto text-slate-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                </svg>
-                <span class="text-sm text-slate-500">点击上传 Python 评分脚本</span>
-                <p class="text-xs text-slate-400 mt-1">支持 .py 文件，用于自动评分</p>
-              </label>
-            </div>
+            <div v-else class="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">暂无评分脚本，请点击作业卡片的“编辑”按钮上传。</div>
           </div>
 
           <!-- 提交统计 -->
@@ -637,7 +628,8 @@ function removeFile(idx) {
 function handleCreateScriptUpload(e) {
   const file = e.target.files[0]
   if (!file) return
-  if (!file.name.endsWith('.py')) {
+  e.target.value = ''
+  if (!file.name.toLowerCase().endsWith('.py')) {
     alert('仅支持 .py 文件')
     return
   }
@@ -731,6 +723,7 @@ async function editHomework(hw) {
     if (version !== editVersion) return
     if (!res.success || !res.data) throw new Error(res.message || '作业详情加载失败')
     editingHomework.value = res.data
+    createEnableAutoGrade.value = !!res.data.grading_script_info?.auto_grade_enabled
   } catch (e) {
     if (version === editVersion) editError.value = e.response?.data?.message || e.message || '加载失败，请关闭后重试'
   } finally {
@@ -778,6 +771,10 @@ async function submitHomework() {
     if (editingHomework.value) {
       fd.append('remove_attachment_ids', JSON.stringify(removedAttachmentIds.value))
       fd.append('remove_grading_script', removeEditingScript.value ? 'true' : 'false')
+      if (createScriptFile.value) {
+        fd.append('script', createScriptFile.value)
+        fd.append('enable_auto', createEnableAutoGrade.value ? 'true' : 'false')
+      }
       res = await updateHomework(editingHomework.value.id, fd)
     } else {
       res = await createHomework(fd)
@@ -921,43 +918,6 @@ async function deleteHomework() {
 }
 
 // 评分脚本相关方法
-async function handleScriptUpload(e) {
-  const file = e.target.files[0]
-  if (!file) return
-  
-  if (!file.name.endsWith('.py')) {
-    alert('仅支持 .py 文件')
-    return
-  }
-  
-  scriptUploading.value = true
-  try {
-    const fd = new FormData()
-    fd.append('script', file)
-    fd.append('enable_auto', 'false')
-    fd.append('regrade_all', 'false')
-    
-    const res = await uploadGradingScript(currentHomework.value.id, fd)
-    if (res.success) {
-      // 刷新评分脚本信息
-      const scriptRes = await getGradingScript(currentHomework.value.id)
-      if (scriptRes.success && scriptRes.data) {
-        gradingScript.value = scriptRes.data
-        gradingAutoEnabled.value = !!scriptRes.data.auto_grade_enabled
-      }
-      alert('评分脚本上传成功')
-    } else {
-      alert(res.message || '上传失败')
-    }
-  } catch (e) {
-    console.error('上传评分脚本失败', e)
-    alert('上传失败')
-  } finally {
-    scriptUploading.value = false
-    e.target.value = ''
-  }
-}
-
 async function viewScriptContent() {
   try {
     const res = await getGradingScriptContent(currentHomework.value.id)

@@ -1371,6 +1371,9 @@ def update_homework(hid):
         remove_ids=list(set(remove_ids))
     except (ValueError,TypeError): return err('附件删除列表格式错误')
     remove_script=data.get('remove_grading_script',False) in (True,'true','1',1)
+    script_file=request.files.get('script') if 'multipart' in ct else None
+    if script_file and script_file.filename and not script_file.filename.lower().endswith('.py'):
+        return err('仅支持 .py 评分脚本')
     if 'multipart' in ct:
         title=request.form.get('title','').strip(); content=request.form.get('content','').strip()
         dl=request.form.get('deadline',''); ts=int(request.form.get('total_score',100))
@@ -1395,6 +1398,17 @@ def update_homework(hid):
         if remove_script:
             cur.execute('DELETE FROM homework_grading_scripts WHERE homework_id=%s',(hid,))
             cur.execute('UPDATE homework SET has_grading_script=0,auto_grade_enabled=0 WHERE id=%s',(hid,))
+        if script_file and script_file.filename:
+            script_path=os.path.join(UPLOAD_DIR,'homework',f'grading_{hid}_{uuid.uuid4().hex[:8]}.py')
+            new_paths.append(script_path);script_file.save(script_path)
+            cur.execute('SELECT id FROM homework_grading_scripts WHERE homework_id=%s FOR UPDATE',(hid,))
+            existing_script=cur.fetchone()
+            if existing_script:
+                cur.execute('UPDATE homework_grading_scripts SET script_path=%s,created_at=NOW() WHERE id=%s',(script_path,existing_script['id']))
+            else:
+                cur.execute("INSERT INTO homework_grading_scripts (homework_id,script_path,language,timeout_seconds,created_by) VALUES (%s,%s,'python',60,%s)",(hid,script_path,request.teacher_id))
+            enabled=data.get('enable_auto',False) in (True,'true','1',1)
+            cur.execute('UPDATE homework SET has_grading_script=1,auto_grade_enabled=%s WHERE id=%s',(int(enabled),hid))
         if 'multipart' in ct:
             for f in request.files.getlist('files'):
                 if f.filename:
