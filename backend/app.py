@@ -14,7 +14,7 @@ UPLOAD_DIR = os.path.join(BASE_DIR, 'uploads')
 LOG_DIR = os.path.join(BASE_DIR, 'logs')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(LOG_DIR, exist_ok=True)
-for d in ['homework','submissions','grades','forum']:
+for d in ['homework','submissions','grades','forum','homework_drafts']:
     os.makedirs(os.path.join(UPLOAD_DIR, d), exist_ok=True)
 
 # ---- 日志配置 ----
@@ -2525,9 +2525,12 @@ def stu_change_password():
 def stu_homework():
     db=get_db(); cur=db.cursor()
     course_id=request.args.get('course_id','')
+    draft_student_id=request.teacher_id if get_user(request).get('role')=='student' else None
     cur.execute("""
-        SELECT h.*,c.name as course_name FROM homework h
+        SELECT h.*,c.name as course_name,d.file_name AS draft_name,d.file_size AS draft_size,
+               d.updated_at AS draft_updated_at FROM homework h
         JOIN courses c ON c.id=h.course_id
+        LEFT JOIN homework_drafts d ON d.homework_id=h.id AND d.student_id=%s
         WHERE (
             (h.class_id IS NOT NULL AND EXISTS (
                 SELECT 1 FROM class_students csm WHERE csm.class_id=h.class_id AND csm.student_id=%s
@@ -2539,9 +2542,13 @@ def stu_homework():
         )
         AND h.is_published=1 AND (%s='' OR h.course_id=%s)
         ORDER BY h.deadline DESC
-    """, (request.teacher_id, request.teacher_id, course_id, course_id))
+    """, (draft_student_id, request.teacher_id, request.teacher_id, course_id, course_id))
     hws=_rows(cur.fetchall())
     for hw in hws:
+        draft_name=hw.pop('draft_name')
+        draft_size=hw.pop('draft_size')
+        draft_updated_at=hw.pop('draft_updated_at')
+        hw['draft']={'file_name':draft_name,'file_size':draft_size,'updated_at':draft_updated_at} if draft_name else None
         cur.execute("SELECT * FROM homework_attachments WHERE homework_id=%s",(hw['id'],))
         hw['attachments']=_rows(cur.fetchall())
         cur.execute("SELECT * FROM homework_submissions WHERE homework_id=%s AND student_id=%s",(hw['id'],request.teacher_id))
@@ -2634,6 +2641,71 @@ def _student_submission_action(f):
             if acquired: cur.execute('SELECT RELEASE_LOCK(%s)',(key,))
             db.close()
     return locked
+
+
+def _can_use_homework_draft(cur, hid, student_id):
+    cur.execute("""SELECT 1 FROM homework h WHERE h.id=%s AND h.is_published=1
+        AND EXISTS (SELECT 1 FROM class_students cs WHERE cs.student_id=%s AND
+            (cs.class_id=h.class_id OR (h.class_id IS NULL AND EXISTS
+                (SELECT 1 FROM course_classes cc WHERE cc.course_id=h.course_id AND cc.class_id=cs.class_id))))""",
+        (hid,student_id))
+    return bool(cur.fetchone())
+
+
+def _draft_file_path(key):
+    if not key or len(key)!=32 or any(c not in '0123456789abcdef' for c in key):
+        return None
+    return os.path.join(UPLOAD_DIR,'homework_drafts',key)
+
+
+def _remove_draft_file(key):
+    path=_draft_file_path(key)
+    if not path: return
+    try: os.unlink(path)
+    except FileNotFoundError: pass
+    except OSError: logger.warning('暂存文件清理失败: %s',key)
+
+
+@app.route('/api/student/homework/<int:hid>/draft', methods=['PUT','GET'])
+@student_required
+@_student_submission_action
+def stu_homework_draft(hid):
+    if get_user(request).get('role')!='student': return err('仅学生本人可以使用作业暂存',403)
+    student_id=request.teacher_id
+    cur=request.submission_db.cursor()
+    if not _can_use_homework_draft(cur,hid,student_id): return err('无权访问该作业',403)
+    cur.execute('SELECT file_key,file_name FROM homework_drafts WHERE homework_id=%s AND student_id=%s',(hid,student_id))
+    old=cur.fetchone()
+    if request.method=='GET':
+        path=_draft_file_path(old['file_key']) if old else None
+        if not path or not os.path.isfile(path): return err('未找到暂存文件',404)
+        response=send_file(path,mimetype='application/octet-stream',as_attachment=True,download_name=old['file_name'])
+        response.headers['Cache-Control']='private, no-store'
+        return response
+    files=[f for _,f in request.files.items(multi=True)]
+    if len(files)!=1 or not files[0].filename: return err('请选择一个暂存文件')
+    upload=files[0]
+    name=upload.filename.replace('\\','/').rsplit('/',1)[-1].strip()[:255]
+    if not name or name in ('.','..') or any(ord(c)<32 or ord(c)==127 for c in name): return err('文件名无效')
+    key=uuid.uuid4().hex
+    path=_draft_file_path(key)
+    try:
+        upload.save(path)
+        size=os.path.getsize(path)
+        if size>90*1024*1024:
+            _remove_draft_file(key)
+            return err('文件超过 90 MB',413)
+        now=datetime.now().replace(microsecond=0)
+        cur.execute('''INSERT INTO homework_drafts (homework_id,student_id,file_name,file_key,file_size,updated_at)
+            VALUES (%s,%s,%s,%s,%s,%s) ON DUPLICATE KEY UPDATE file_name=VALUES(file_name),
+            file_key=VALUES(file_key),file_size=VALUES(file_size),updated_at=VALUES(updated_at)''',
+            (hid,student_id,name,key,size,now))
+    except Exception:
+        _remove_draft_file(key)
+        logger.exception('保存作业暂存失败: homework_id=%s student_id=%s',hid,student_id)
+        return err('暂存失败，请稍后重试',500)
+    if old: _remove_draft_file(old['file_key'])
+    return success({'file_name':name,'file_size':size,'updated_at':_ser(now)})
 
 
 def _refresh_homework_ranking(cur, class_id, student_id, student_name):

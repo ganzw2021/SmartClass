@@ -64,6 +64,7 @@
               <span v-else-if="isNearDeadline(hw.deadline)" class="text-orange-500 ml-1">（即将截止）</span>
             </p>
             <p v-if="hw.description" class="text-sm text-slate-400 line-clamp-2">{{ hw.description }}</p>
+            <p v-if="hw.draft" class="mt-2 break-all text-xs text-slate-500">已暂存：{{ hw.draft.file_name }}</p>
 
             <!-- 提交信息 -->
             <p v-if="!hw.submitted" class="mt-3 text-xs text-slate-500">作业得分：0.0分（未提交）</p>
@@ -85,6 +86,7 @@
 
           <!-- 操作按钮 -->
           <div class="flex shrink-0 flex-col gap-2">
+            <button type="button" @click="openDraft(hw)" class="px-3 py-1.5 text-xs bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">暂存文件</button>
             <button
               @click="viewDetail(hw)"
               class="px-3 py-1.5 text-xs bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
@@ -122,6 +124,27 @@
 
     <!-- 提交作业弹窗 -->
     <Teleport to="body">
+      <div v-if="draftHw" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center sm:p-6">
+        <div role="dialog" aria-modal="true" aria-labelledby="homework-draft-title" class="w-full sm:max-w-lg max-h-[90vh] overflow-y-auto bg-white rounded-t-3xl sm:rounded-3xl p-5 sm:p-8 shadow-2xl space-y-4">
+          <h3 id="homework-draft-title" class="text-lg font-bold text-slate-800 break-words">暂存文件：{{ draftHw.title }}</h3>
+          <p class="text-sm text-slate-600">每份作业只能暂存一个文件，重新上传成功后会覆盖原文件。暂存不算正式提交。</p>
+          <div v-if="draftHw.draft" class="rounded-xl bg-slate-50 p-3 text-sm">
+            <p class="break-all font-medium">{{ draftHw.draft.file_name }}</p>
+            <p class="mt-1 text-xs text-slate-500">暂存于 {{ formatDate(draftHw.draft.updated_at) }}</p>
+            <button type="button" @click="downloadDraft" :disabled="draftSaving || draftDownloading" class="mt-2 text-blue-600 underline disabled:opacity-50">{{ draftDownloading ? '下载中…' : '下载暂存文件' }}</button>
+          </div>
+          <div>
+            <label for="homework-draft-file" class="block mb-1 text-sm font-medium">选择暂存文件（最多 90 MB）</label>
+            <input id="homework-draft-file" ref="draftInput" type="file" @change="selectDraftFile" :disabled="draftSaving" class="w-full text-sm" />
+          </div>
+          <p v-if="draftError" role="alert" class="text-sm text-red-600">{{ draftError }}</p>
+          <p v-if="draftMessage" role="status" class="text-sm text-green-700">{{ draftMessage }}</p>
+          <div class="flex gap-3">
+            <button type="button" @click="draftHw = null" :disabled="draftSaving" class="flex-1 rounded-xl border py-3 disabled:opacity-50">关闭</button>
+            <button type="button" @click="saveDraft" :disabled="!draftFile || draftSaving || draftDownloading" class="flex-1 rounded-xl bg-blue-600 py-3 text-white disabled:opacity-50">{{ draftSaving ? `上传中 ${draftProgress}%` : draftHw.draft ? '覆盖暂存' : '保存暂存' }}</button>
+          </div>
+        </div>
+      </div>
       <div v-if="submitHw" class="fixed inset-0 bg-black/40 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-6">
         <div role="dialog" aria-modal="true" aria-labelledby="student-homework-submit-title" class="relative bg-white rounded-t-3xl sm:rounded-[32px] w-full sm:max-w-lg sm:p-8 p-5 shadow-2xl overflow-y-auto max-h-[90vh] sm:max-h-[85vh]">
           <!-- 移动端：顶部拖动条 -->
@@ -256,7 +279,7 @@
 <script setup>
 import { ref, onMounted, onActivated, onDeactivated, watch } from 'vue'
 import { courseOptions, formatScore, studentError } from '../studentHelpers.js'
-import { getStudentHomework, getStudentCourses, submitHomework, withdrawHomework } from '../api.js'
+import { getStudentHomework, getStudentCourses, submitHomework, withdrawHomework, saveHomeworkDraft, downloadHomeworkDraft } from '../api.js'
 
 const courses = ref([])
 const homeworkList = ref([])
@@ -272,6 +295,14 @@ const submitting = ref(false)
 const submitError = ref('')
 const uploadProgress = ref(0)
 const withdrawingId = ref(null)
+const draftHw = ref(null)
+const draftFile = ref(null)
+const draftInput = ref(null)
+const draftSaving = ref(false)
+const draftDownloading = ref(false)
+const draftProgress = ref(0)
+const draftError = ref('')
+const draftMessage = ref('')
 let loadVersion = 0
 
 async function loadHomework() {
@@ -315,10 +346,77 @@ onDeactivated(() => {
   ++loadVersion
   detailHw.value = null
   if (!submitting.value) submitHw.value = null
+  if (!draftSaving.value) draftHw.value = null
 })
 
 function viewDetail(hw) {
   detailHw.value = hw
+}
+
+function openDraft(hw) {
+  if (draftSaving.value || draftDownloading.value) return
+  draftHw.value = hw
+  draftFile.value = null
+  draftError.value = ''
+  draftMessage.value = ''
+}
+
+function selectDraftFile(event) {
+  const file = event.target.files?.[0]
+  draftError.value = ''
+  draftMessage.value = ''
+  if (file?.size > 90 * 1024 * 1024) {
+    draftFile.value = null
+    event.target.value = ''
+    draftError.value = '文件超过 90 MB，请压缩后再上传'
+    return
+  }
+  draftFile.value = file || null
+}
+
+async function saveDraft() {
+  if (!draftHw.value || !draftFile.value || draftSaving.value || draftDownloading.value) return
+  const hw = draftHw.value
+  draftSaving.value = true
+  draftProgress.value = 0
+  draftError.value = ''
+  draftMessage.value = ''
+  try {
+    const res = await saveHomeworkDraft(hw.id, draftFile.value, event => {
+      if (event.total) draftProgress.value = Math.min(100, Math.round(event.loaded * 100 / event.total))
+    })
+    if (!res.success) throw new Error(res.message || '暂存失败')
+    hw.draft = res.data
+    const listed = homeworkList.value.find(item => item.id === hw.id)
+    if (listed) listed.draft = res.data
+    draftFile.value = null
+    if (draftInput.value) draftInput.value.value = ''
+    draftMessage.value = '文件已暂存，尚未正式提交'
+  } catch (e) {
+    draftError.value = studentError(e, e.code === 'ECONNABORTED' ? '等待超时，请刷新后确认暂存结果' : '暂存失败，请稍后重试')
+  } finally {
+    draftSaving.value = false
+  }
+}
+
+async function downloadDraft() {
+  if (!draftHw.value?.draft || draftSaving.value || draftDownloading.value) return
+  const { id, draft } = draftHw.value
+  draftDownloading.value = true
+  draftError.value = ''
+  try {
+    const blob = await downloadHomeworkDraft(id)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = draft.file_name
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 30000)
+  } catch (e) {
+    draftError.value = studentError(e, '下载暂存文件失败，请刷新后重试')
+  } finally {
+    draftDownloading.value = false
+  }
 }
 
 function openSubmit(hw) {

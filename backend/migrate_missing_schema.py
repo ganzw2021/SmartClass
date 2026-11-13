@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Idempotent schema repair for the current SmartClass backend."""
 import os
+from pathlib import Path
 import pymysql
 from seed_lucky_herbs import catalog_rows
 
@@ -43,6 +44,7 @@ def add_columns(cur, table, definitions):
 conn = pymysql.connect(**DB)
 try:
     cur = conn.cursor()
+    cur.execute(Path(__file__).with_name('homework_drafts.sql').read_text(encoding='utf-8'))
 
     cur.execute("""CREATE TABLE IF NOT EXISTS course_resources (
         id INT AUTO_INCREMENT PRIMARY KEY,

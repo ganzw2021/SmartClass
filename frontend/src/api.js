@@ -731,6 +731,18 @@ export async function withdrawHomework(homeworkId) {
   return await api.post(`/student/homework/${homeworkId}/withdraw`)
 }
 
+export async function saveHomeworkDraft(homeworkId, file, onUploadProgress) {
+  const data = new FormData()
+  data.append('file', file)
+  return await api.put(`/student/homework/${homeworkId}/draft`, data, {
+    headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000, onUploadProgress
+  })
+}
+
+export async function downloadHomeworkDraft(homeworkId) {
+  return await api.get(`/student/homework/${homeworkId}/draft`, { responseType: 'blob', timeout: 120000 })
+}
+
 export async function submitHomework(homeworkId, formData, onUploadProgress) {
   return await api.post(`/student/homework/${homeworkId}/submit`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
