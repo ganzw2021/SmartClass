@@ -101,21 +101,30 @@
 
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-1.5">关联课程 *</label>
-              <select v-model="formData.course_id" required class="w-full border-2 border-slate-100 rounded-xl px-4 py-2.5 outline-none focus:border-[#2d6a4f] transition-colors">
+              <select v-model="formData.course_id" @change="selectedPublishClassIds = []" :disabled="!!editingHomework || submitting" required class="w-full border-2 border-slate-100 rounded-xl px-4 py-2.5 outline-none focus:border-[#2d6a4f] transition-colors">
                 <option value="">请选择课程</option>
                 <option v-for="course in courses" :key="course.id" :value="course.id">{{ course.name }}</option>
               </select>
             </div>
 
             <div>
-              <label class="block text-sm font-medium text-slate-700 mb-1.5">班级</label>
-              <div v-if="editingHomework && editClassName" class="w-full border-2 border-green-200 bg-green-50 rounded-xl px-4 py-2.5 text-green-700">
-                {{ editClassName }}
+              <label class="block text-sm font-medium text-slate-700 mb-1.5">发布班级</label>
+              <div v-if="editingHomework" class="w-full border-2 border-green-200 bg-green-50 rounded-xl px-4 py-2.5 text-green-700">
+                {{ editingHomework.class_name || props.classes.find(cls => cls.id === editingHomework.class_id)?.name || '原发布班级' }}
               </div>
-              <select v-else v-model="formData.class_id" class="w-full border-2 border-slate-100 rounded-xl px-4 py-2.5 outline-none focus:border-[#2d6a4f] transition-colors">
-                <option value="">全部班级</option>
-                <option v-for="cls in selectedCourseClasses" :key="cls.id" :value="cls.id">{{ cls.name }}</option>
-              </select>
+              <div v-else-if="selectedCourseClasses.length" class="rounded-xl border border-slate-200 p-3">
+                <div class="flex justify-between items-center gap-2 mb-2 text-sm">
+                  <span class="text-slate-600">已选 {{ selectedPublishClassIds.length }} 个班级</span>
+                  <button type="button" :disabled="submitting" @click="toggleAllPublishClasses" class="text-blue-600 disabled:opacity-50">{{ allPublishClassesSelected ? '取消全选' : '全选' }}</button>
+                </div>
+                <div class="max-h-36 overflow-y-auto space-y-1">
+                  <label v-for="cls in selectedCourseClasses" :key="cls.id" class="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-slate-50">
+                    <input v-model="selectedPublishClassIds" type="checkbox" :value="String(cls.id)" :disabled="submitting" class="accent-[#2d6a4f]">
+                    <span class="text-sm break-words">{{ cls.name }}</span>
+                  </label>
+                </div>
+              </div>
+              <p v-else class="text-sm text-slate-500">{{ formData.course_id ? '该课程尚未关联班级' : '请先选择课程，再勾选一个或多个班级' }}</p>
             </div>
 
             <div>
@@ -210,9 +219,9 @@
               <button type="button" @click="closeCreateModal" :disabled="submitting" class="flex-1 border-2 border-slate-200 text-slate-600 py-3 rounded-xl font-medium hover:bg-slate-50 transition-colors">
                 取消
               </button>
-              <button type="submit" :disabled="submitting || editLoading || !!editError" class="flex-1 bg-[#2d6a4f] hover:bg-[#245a42] disabled:bg-slate-300 text-white py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2">
+              <button type="submit" :disabled="submitting || editLoading || !!editError || (!editingHomework && !selectedPublishClassIds.length)" class="flex-1 bg-[#2d6a4f] hover:bg-[#245a42] disabled:bg-slate-300 text-white py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2">
                 <span v-if="submitting" class="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full"></span>
-                {{ editingHomework ? '保存修改' : '发布作业' }}
+                {{ submitting ? '正在保存…' : editingHomework ? '保存修改' : selectedPublishClassIds.length ? `发布到 ${selectedPublishClassIds.length} 个班级` : '发布作业' }}
               </button>
             </div>
           </form>
@@ -537,6 +546,7 @@ function onFilterCourseChange() {
 // 创建/编辑弹窗
 const showCreateModal = ref(false)
 const editingHomework = ref(null)
+const selectedPublishClassIds = ref([])
 const removedAttachmentIds = ref([])
 const removeEditingScript = ref(false)
 const editLoading = ref(false)
@@ -643,24 +653,16 @@ const filteredHomeworkList = computed(() => {
 })
 
 const selectedCourseClasses = computed(() => {
-  if (!formData.value.course_id) return []
-  const course = props.courses.find(c => c.id === formData.value.course_id)
-  const fromCourse = course?.classes || []
-  if (fromCourse.length > 0) return fromCourse
-  // 降级：从 props.classes 中找当前作业关联班级的同名班级
-  if (editingHomework.value?.class_id && props.classes.length > 0) {
-    return props.classes.filter(cls => cls.id === editingHomework.value.class_id)
-  }
-  return fromCourse
+  const course = props.courses.find(c => String(c.id) === String(formData.value.course_id))
+  return course?.classes || []
 })
 
-// 编辑时显示已有班级名称（非下拉选项时展示）
-const editClassName = computed(() => {
-  if (!editingHomework.value) return ''
-  const opts = selectedCourseClasses.value
-  if (opts.length > 0) return ''
-  return editingHomework.value.class_name || ''
-})
+const allPublishClassesSelected = computed(() => selectedCourseClasses.value.length > 0 &&
+  selectedCourseClasses.value.every(cls => selectedPublishClassIds.value.includes(String(cls.id))))
+
+function toggleAllPublishClasses() {
+  selectedPublishClassIds.value = allPublishClassesSelected.value ? [] : selectedCourseClasses.value.map(cls => String(cls.id))
+}
 
 // 方法
 async function loadHomework() {
@@ -688,6 +690,7 @@ function formatDate(dateStr) {
 
 function closeCreateModal() {
   ++editVersion
+  selectedPublishClassIds.value = []
   removedAttachmentIds.value = []
   removeEditingScript.value = false
   editLoading.value = false
@@ -752,12 +755,12 @@ function toggleScriptRemoval() {
 
 async function submitHomework() {
   if (submitting.value || editLoading.value || editError.value) return
+  if (!editingHomework.value && !selectedPublishClassIds.value.length) return
   submitting.value = true
   try {
     const fd = new FormData()
     fd.append('title', formData.value.title)
     fd.append('course_id', formData.value.course_id)
-    if (formData.value.class_id) fd.append('class_id', formData.value.class_id)
     if (formData.value.content) fd.append('content', formData.value.content)
     if (formData.value.deadline) fd.append('deadline', formData.value.deadline)
     fd.append('total_score', formData.value.total_score)
@@ -771,27 +774,19 @@ async function submitHomework() {
     if (editingHomework.value) {
       fd.append('remove_attachment_ids', JSON.stringify(removedAttachmentIds.value))
       fd.append('remove_grading_script', removeEditingScript.value ? 'true' : 'false')
-      if (createScriptFile.value) {
-        fd.append('script', createScriptFile.value)
-        fd.append('enable_auto', createEnableAutoGrade.value ? 'true' : 'false')
-      }
-      res = await updateHomework(editingHomework.value.id, fd)
     } else {
-      res = await createHomework(fd)
+      fd.append('class_ids', JSON.stringify(selectedPublishClassIds.value))
     }
+    if (createScriptFile.value) {
+      fd.append('script', createScriptFile.value)
+      fd.append('enable_auto', createEnableAutoGrade.value ? 'true' : 'false')
+    }
+    res = editingHomework.value ? await updateHomework(editingHomework.value.id, fd) : await createHomework(fd)
     
     if (res.success) {
       const hwId = editingHomework.value ? editingHomework.value.id : res.data?.id
       
-      // 如果创建时上传了评分脚本，上传脚本
-      if (!editingHomework.value && createScriptFile.value && hwId) {
-        const scriptFd = new FormData()
-        scriptFd.append('script', createScriptFile.value)
-        scriptFd.append('enable_auto', createEnableAutoGrade.value ? 'true' : 'false')
-        scriptFd.append('regrade_all', 'false')
-        await uploadGradingScript(hwId, scriptFd)
-      }
-      
+      if (!editingHomework.value && res.data?.published_count > 1) alert(`已发布到 ${res.data.published_count} 个班级`)
       closeCreateModal()
       selectedFiles.value = []
       createScriptFile.value = null
@@ -806,7 +801,7 @@ async function submitHomework() {
     }
   } catch (e) {
     console.error('提交作业失败', e)
-    alert('提交失败')
+    alert(e.response?.data?.message || '提交失败，请先刷新作业列表确认结果')
   } finally {
     submitting.value = false
   }

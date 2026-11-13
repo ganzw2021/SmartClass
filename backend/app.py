@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """智慧课堂后端 Flask API - 重建版 2026-04-14"""
-import os, sys, json, time, uuid, secrets, threading, subprocess, logging, zipfile, io, html
+import os, sys, json, time, uuid, secrets, threading, subprocess, logging, zipfile, io, html, shutil
 from datetime import datetime, timedelta
 from functools import wraps
 from decimal import Decimal, InvalidOperation
@@ -1329,34 +1329,83 @@ def _parse_deadline(dl):
 @app.route('/api/homework', methods=['POST'])
 @teacher_required
 def create_homework():
-    ct=request.content_type or ''
-    if 'multipart' in ct:
-        title=request.form.get('title','').strip(); content=request.form.get('content','').strip()
-        cid=request.form.get('course_id','').strip(); clid=request.form.get('class_id','').strip()
-        dl=request.form.get('deadline',''); ts=int(request.form.get('total_score',100))
-    else:
-        d=request.get_json() or {}; title=(d.get('title') or '').strip(); content=(d.get('content') or '').strip()
-        cid=str(d.get('course_id','')); clid=str(d.get('class_id','')); dl=d.get('deadline',''); ts=int(d.get('total_score',100))
+    multipart='multipart' in (request.content_type or '')
+    data=request.form if multipart else request.get_json(silent=True)
+    if not multipart and not isinstance(data,dict): return err('请求数据格式错误')
+    title=str(data.get('title') or '').strip()
+    content=str(data.get('content') or '').strip()
+    cid=str(data.get('course_id') or '').strip()
     if not title or not cid: return err('标题和课程不能为空')
+    try:
+        ts=int(data.get('total_score',100))
+        if not 1<=ts<=1000: return err('作业总分须在 1 到 1000 之间')
+        selected=data.get('class_ids')
+        if isinstance(selected,str): selected=json.loads(selected)
+        if selected is None:
+            legacy=str(data.get('class_id') or '').strip()
+            selected=[legacy] if legacy else []
+        if not isinstance(selected,list) or any(not isinstance(x,str) or not x.strip() for x in selected):
+            return err('班级列表格式错误')
+        selected=list(dict.fromkeys(x.strip() for x in selected))
+        if not selected and 'class_ids' in data: return err('请至少选择一个班级')
+    except (ValueError,TypeError,OverflowError): return err('班级列表或作业总分格式错误')
+    deadline=_parse_deadline(data.get('deadline'))
+    if data.get('deadline') and deadline is None: return err('截止时间格式错误')
+    deadline_str=deadline.strftime('%Y-%m-%d %H:%M') if deadline else '未定'
+    materials=[f for f in request.files.getlist('files') if f.filename] if multipart else []
+    script=request.files.get('script') if multipart else None
+    if script and not script.filename.lower().endswith('.py'): return err('仅支持 .py 评分脚本')
+    auto_enabled=bool(script) and data.get('enable_auto') in (True,'true','1',1)
     db=get_db(); cur=db.cursor()
-    cur.execute("INSERT INTO homework (course_id,class_id,teacher_id,title,content,deadline,total_score,is_published) VALUES (%s,%s,%s,%s,%s,%s,%s,1)",(cid,clid,request.teacher_id,title,content,_parse_deadline(dl),ts))
-    hid=cur.lastrowid
-    attachments = []
-    if 'multipart' in ct:
-        for f in request.files.getlist('files'):
-            if f.filename:
-                fn=f.filename; ext=os.path.splitext(fn)[1]; sn=f"{uuid.uuid4().hex}{ext}"
-                fp=os.path.join(UPLOAD_DIR,'homework',sn); f.save(fp)
-                sz=os.path.getsize(fp)
-                cur.execute("INSERT INTO homework_attachments (homework_id,file_name,file_path,file_size) VALUES (%s,%s,%s,%s)",(hid,fn,fp,sz))
-                attachments.append({'id':cur.lastrowid,'filename':fn,'file_path':fp,'file_size':sz})
-    
-    # 创建作业通知，通知班级所有学生
-    deadline_str = _parse_deadline(dl).strftime('%Y-%m-%d %H:%M') if _parse_deadline(dl) else '未定'
-    _create_homework_notifications(hid, cid, clid, title, deadline_str)
-    
-    db.close()
-    return success({'id':hid,'attachments':attachments,'is_published':1,'auto_grade_enabled':False})
+    created=[]; new_paths=[]; originals={}
+    def store_file(key,upload,name):
+        path=os.path.join(UPLOAD_DIR,'homework',name)
+        new_paths.append(path)
+        if key in originals: shutil.copyfile(originals[key],path)
+        else:
+            upload.save(path)
+            originals[key]=path
+        return path
+    try:
+        db.begin()
+        cur.execute('SELECT id FROM courses WHERE id=%s AND teacher_id=%s FOR UPDATE',(cid,request.teacher_id))
+        if not cur.fetchone(): db.rollback();return err('课程不存在或无权发布作业',404)
+        cur.execute('SELECT cc.class_id FROM course_classes cc JOIN classes c ON c.id=cc.class_id WHERE cc.course_id=%s ORDER BY cc.class_id FOR UPDATE',(cid,))
+        allowed=[row['class_id'] for row in cur.fetchall()]
+        targets=selected or allowed
+        if not targets or not set(targets).issubset(allowed):
+            db.rollback();return err('请选择该课程已关联的班级')
+        for clid in targets:
+            cur.execute("""INSERT INTO homework
+                (course_id,class_id,teacher_id,title,content,deadline,total_score,is_published,has_grading_script,auto_grade_enabled)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,1,%s,%s)""",
+                (cid,clid,request.teacher_id,title,content,deadline,ts,int(bool(script)),int(auto_enabled)))
+            hid=cur.lastrowid; attachments=[]
+            for index,upload in enumerate(materials):
+                path=store_file(index,upload,uuid.uuid4().hex+os.path.splitext(upload.filename)[1])
+                size=os.path.getsize(path)
+                cur.execute('INSERT INTO homework_attachments (homework_id,file_name,file_path,file_size) VALUES (%s,%s,%s,%s)',
+                    (hid,upload.filename,path,size))
+                attachments.append({'id':cur.lastrowid,'filename':upload.filename,'file_size':size})
+            if script:
+                path=store_file('script',script,f'grading_{hid}_{uuid.uuid4().hex[:8]}.py')
+                cur.execute("""INSERT INTO homework_grading_scripts (homework_id,script_path,language,timeout_seconds,created_by)
+                    VALUES (%s,%s,'python',60,%s)""",(hid,path,request.teacher_id))
+            cur.execute("""INSERT INTO student_notifications (student_id,type,title,content,related_id,related_type)
+                SELECT cs.student_id,'homework_new',%s,%s,%s,'homework'
+                FROM class_students cs WHERE cs.class_id=%s""",
+                (f'新作业：{title}',f'课程作业已发布，截止时间：{deadline_str}',hid,clid))
+            created.append({'id':hid,'class_id':clid,'attachments':attachments})
+        db.commit()
+    except Exception:
+        db.rollback()
+        _remove_homework_files(new_paths)
+        logger.exception('发布作业失败: course_id=%s',cid)
+        return err('发布失败，未发布到任何班级，请稍后重试',500)
+    finally:
+        db.close()
+    return success({'id':created[0]['id'],'attachments':created[0]['attachments'],
+        'homeworks':created,'published_count':len(created),'is_published':1,'auto_grade_enabled':auto_enabled})
 
 @app.route('/api/homework/<int:hid>', methods=['PUT'])
 @teacher_required
@@ -2425,23 +2474,6 @@ def stu_mark_notifications_read():
         cur.execute("UPDATE student_notifications SET is_read=1 WHERE student_id=%s", (request.teacher_id,))
     db.close()
     return success()
-
-def _create_homework_notifications(hw_id, course_id, class_id, title, deadline):
-    """创建新作业通知（通知班级所有学生）"""
-    db = get_db()
-    cur = db.cursor()
-    
-    # 获取班级所有学生
-    students = _class_students(cur, class_id, 's.id')
-    
-    for stu in students:
-        cur.execute("""
-            INSERT INTO student_notifications (student_id, type, title, content, related_id, related_type)
-            VALUES (%s, 'homework_new', %s, %s, %s, 'homework')
-        """, (stu['id'], f'新作业：{title}', f'课程作业已发布，截止时间：{deadline}', hw_id))
-    
-    db.commit()
-    db.close()
 
 def _check_deadline_reminders(student_id):
     """检查临近到期的作业，创建提醒通知"""

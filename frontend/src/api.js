@@ -533,7 +533,8 @@ export async function getHomeworkDetail(homeworkId) {
  */
 export async function createHomework(formData) {
   return await api.post('/homework', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000
   })
 }
 
