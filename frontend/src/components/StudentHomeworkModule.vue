@@ -43,7 +43,7 @@
         :class="['rounded-2xl shadow-sm border p-5 hover:shadow-md transition-shadow',
           isExpired(hw.deadline) ? 'bg-slate-50 border-slate-200' : 'bg-white border-blue-50']"
       >
-        <div class="flex items-start justify-between gap-4">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div class="flex-1 min-w-0 break-words">
             <div class="flex items-center gap-2 mb-1 flex-wrap">
               <h4 class="font-bold text-slate-800">{{ hw.title }}</h4>
@@ -85,37 +85,22 @@
           </div>
 
           <!-- 操作按钮 -->
-          <div class="flex shrink-0 flex-col gap-2">
-            <button type="button" @click="openDraft(hw)" class="px-3 py-1.5 text-xs bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200">暂存文件</button>
+          <div class="grid shrink-0 grid-cols-2 gap-2 border-t border-slate-200 pt-3 sm:w-32 sm:grid-cols-1 sm:border-t-0 sm:pt-0" role="group" aria-label="作业操作">
             <button
-              @click="viewDetail(hw)"
-              class="px-3 py-1.5 text-xs bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors"
-            >
-              查看
-            </button>
-            <button
-              v-if="!hw.submitted && !isExpired(hw.deadline)"
+              v-if="!isExpired(hw.deadline)"
+              type="button"
               @click="openSubmit(hw)"
-              class="px-3 py-1.5 text-xs bg-green-50 text-green-600 rounded-lg hover:bg-green-100 transition-colors"
+              class="homework-action col-span-2 border border-blue-700 bg-blue-700 text-white shadow-sm hover:bg-blue-800 sm:col-span-1"
             >
-              提交
+              {{ hw.submitted ? '重新提交' : '提交作业' }}
             </button>
-            <button
-              v-if="hw.submitted && !isExpired(hw.deadline)"
-              @click="openSubmit(hw)"
-              class="px-3 py-1.5 text-xs bg-amber-50 text-amber-600 rounded-lg hover:bg-amber-100 transition-colors"
-            >
-              重新提交
-            </button>
-            <!-- 已过期提示 -->
-            <button v-if="hw.submitted" @click="withdrawSubmission(hw)" :disabled="withdrawingId !== null || submitting" class="px-3 py-1.5 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 disabled:opacity-50">
+            <button type="button" @click="viewDetail(hw)" class="homework-action border border-blue-300 bg-blue-50 text-blue-800 hover:bg-blue-100">查看详情</button>
+            <button type="button" @click="openDraft(hw)" class="homework-action border border-violet-300 bg-violet-50 text-violet-800 hover:bg-violet-100">暂存文件</button>
+            <button v-if="hw.submitted" type="button" @click="withdrawSubmission(hw)" :disabled="withdrawingId !== null || submitting" class="homework-action col-span-2 border border-red-300 bg-red-50 text-red-800 hover:bg-red-100 sm:col-span-1">
               {{ withdrawingId === hw.id ? '撤回中…' : '撤回提交' }}
             </button>
-            <span v-if="isExpired(hw.deadline) && !hw.submitted" class="px-3 py-1.5 text-xs bg-red-50 text-red-400 rounded-lg text-center">
-              未提交
-            </span>
-            <span v-if="isExpired(hw.deadline) && hw.submitted" class="px-3 py-1.5 text-xs bg-green-50 text-green-600 rounded-lg text-center">
-              已提交
+            <span v-if="isExpired(hw.deadline)" :class="['col-span-2 rounded-lg px-3 py-2 text-center text-sm font-medium sm:col-span-1', hw.submitted ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-700']">
+              {{ hw.submitted ? '已提交' : '未提交' }}
             </span>
           </div>
         </div>
@@ -522,3 +507,9 @@ function downloadSubAttachment(att) {
   document.body.appendChild(a); a.click(); document.body.removeChild(a)
 }
 </script>
+
+<style scoped>
+.homework-action {
+  @apply inline-flex min-h-11 w-full items-center justify-center rounded-xl px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 disabled:cursor-not-allowed disabled:opacity-50;
+}
+</style>
