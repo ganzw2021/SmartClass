@@ -112,19 +112,20 @@
               <div v-if="editingHomework" class="w-full border-2 border-green-200 bg-green-50 rounded-xl px-4 py-2.5 text-green-700">
                 {{ editingHomework.class_name || props.classes.find(cls => cls.id === editingHomework.class_id)?.name || '原发布班级' }}
               </div>
-              <div v-else-if="selectedCourseClasses.length" class="rounded-xl border border-slate-200 p-3">
+              <p v-if="editingHomework" class="mt-2 text-xs text-slate-600">可勾选新增班级。保存后，这些班级将收到修改后的作业；原班级和已发布的其他班级不会被移除。</p>
+              <div v-if="availablePublishClasses.length && !editLoading && !editError" class="mt-2 rounded-xl border border-slate-200 p-3">
                 <div class="flex justify-between items-center gap-2 mb-2 text-sm">
-                  <span class="text-slate-600">已选 {{ selectedPublishClassIds.length }} 个班级</span>
+                  <span class="text-slate-600">{{ editingHomework ? '新增发布班级' : '发布班级' }} · 已选 {{ selectedPublishClassIds.length }} 个</span>
                   <button type="button" :disabled="submitting" @click="toggleAllPublishClasses" class="text-blue-600 disabled:opacity-50">{{ allPublishClassesSelected ? '取消全选' : '全选' }}</button>
                 </div>
                 <div class="max-h-36 overflow-y-auto space-y-1">
-                  <label v-for="cls in selectedCourseClasses" :key="cls.id" class="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-slate-50">
+                  <label v-for="cls in availablePublishClasses" :key="cls.id" class="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-slate-50">
                     <input v-model="selectedPublishClassIds" type="checkbox" :value="String(cls.id)" :disabled="submitting" class="accent-[#2d6a4f]">
                     <span class="text-sm break-words">{{ cls.name }}</span>
                   </label>
                 </div>
               </div>
-              <p v-else class="text-sm text-slate-500">{{ formData.course_id ? '该课程尚未关联班级' : '请先选择课程，再勾选一个或多个班级' }}</p>
+              <p v-else-if="!editLoading && !editError" class="mt-2 text-sm text-slate-500">{{ editingHomework ? '没有可新增的班级' : formData.course_id ? '该课程尚未关联班级' : '请先选择课程，再勾选一个或多个班级' }}</p>
             </div>
 
             <div>
@@ -221,7 +222,7 @@
               </button>
               <button type="submit" :disabled="submitting || editLoading || !!editError || (!editingHomework && !selectedPublishClassIds.length)" class="flex-1 bg-[#2d6a4f] hover:bg-[#245a42] disabled:bg-slate-300 text-white py-3 rounded-xl font-medium transition-colors flex items-center justify-center gap-2">
                 <span v-if="submitting" class="animate-spin w-5 h-5 border-2 border-white border-t-transparent rounded-full"></span>
-                {{ submitting ? '正在保存…' : editingHomework ? '保存修改' : selectedPublishClassIds.length ? `发布到 ${selectedPublishClassIds.length} 个班级` : '发布作业' }}
+                {{ submitting ? '正在保存…' : editingHomework ? (selectedPublishClassIds.length ? `保存并发布到新增 ${selectedPublishClassIds.length} 个班级` : '保存修改') : selectedPublishClassIds.length ? `发布到 ${selectedPublishClassIds.length} 个班级` : '发布作业' }}
               </button>
             </div>
           </form>
@@ -657,11 +658,18 @@ const selectedCourseClasses = computed(() => {
   return course?.classes || []
 })
 
-const allPublishClassesSelected = computed(() => selectedCourseClasses.value.length > 0 &&
-  selectedCourseClasses.value.every(cls => selectedPublishClassIds.value.includes(String(cls.id))))
+const availablePublishClasses = computed(() => {
+  if (!editingHomework.value) return selectedCourseClasses.value
+  if (!editingHomework.value.class_id || !editingHomework.value.is_published) return []
+  const published = new Set((editingHomework.value.published_class_ids || [editingHomework.value.class_id]).map(String))
+  return selectedCourseClasses.value.filter(cls => !published.has(String(cls.id)))
+})
+
+const allPublishClassesSelected = computed(() => availablePublishClasses.value.length > 0 &&
+  availablePublishClasses.value.every(cls => selectedPublishClassIds.value.includes(String(cls.id))))
 
 function toggleAllPublishClasses() {
-  selectedPublishClassIds.value = allPublishClassesSelected.value ? [] : selectedCourseClasses.value.map(cls => String(cls.id))
+  selectedPublishClassIds.value = allPublishClassesSelected.value ? [] : availablePublishClasses.value.map(cls => String(cls.id))
 }
 
 // 方法
@@ -705,6 +713,7 @@ function closeCreateModal() {
 
 async function editHomework(hw) {
   const version = ++editVersion
+  selectedPublishClassIds.value = []
   removedAttachmentIds.value = []
   removeEditingScript.value = false
   createScriptFile.value = null
@@ -772,6 +781,7 @@ async function submitHomework() {
 
     let res
     if (editingHomework.value) {
+      if (selectedPublishClassIds.value.length) fd.append('add_class_ids', JSON.stringify(selectedPublishClassIds.value))
       fd.append('remove_attachment_ids', JSON.stringify(removedAttachmentIds.value))
       fd.append('remove_grading_script', removeEditingScript.value ? 'true' : 'false')
     } else {
@@ -786,7 +796,8 @@ async function submitHomework() {
     if (res.success) {
       const hwId = editingHomework.value ? editingHomework.value.id : res.data?.id
       
-      if (!editingHomework.value && res.data?.published_count > 1) alert(`已发布到 ${res.data.published_count} 个班级`)
+      if (editingHomework.value && res.data?.published_count) alert(`已保存，并发布到 ${res.data.published_count} 个新增班级`)
+      else if (!editingHomework.value && res.data?.published_count > 1) alert(`已发布到 ${res.data.published_count} 个班级`)
       closeCreateModal()
       selectedFiles.value = []
       createScriptFile.value = null

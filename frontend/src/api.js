@@ -545,7 +545,8 @@ export async function createHomework(formData) {
  */
 export async function updateHomework(homeworkId, formData) {
   return await api.put(`/homework/${homeworkId}`, formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000
   })
 }
 

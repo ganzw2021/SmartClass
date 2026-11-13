@@ -194,6 +194,8 @@ CREATE TABLE IF NOT EXISTS homework (
     content TEXT COMMENT '作业内容',
     deadline DATETIME COMMENT '截止时间',
     total_score INT DEFAULT 100 COMMENT '满分',
+    publish_group CHAR(32) NULL,
+    UNIQUE KEY uk_homework_publish_class (publish_group,class_id),
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_course (course_id),

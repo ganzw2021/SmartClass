@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import pymysql
 from seed_lucky_herbs import catalog_rows
+from migrate_homework_publish_group import ensure_publish_group
 
 # Keep the migration runnable from a clean virtualenv; the backend's .env is
 # intentionally not required as an installed Python dependency.
@@ -44,6 +45,7 @@ def add_columns(cur, table, definitions):
 conn = pymysql.connect(**DB)
 try:
     cur = conn.cursor()
+    ensure_publish_group(cur)
     cur.execute(Path(__file__).with_name('homework_drafts.sql').read_text(encoding='utf-8'))
 
     cur.execute("""CREATE TABLE IF NOT EXISTS course_resources (

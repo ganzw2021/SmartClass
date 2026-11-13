@@ -1284,6 +1284,11 @@ def get_homework_detail(hid):
     hw=_row(cur.fetchone())
     if not hw: return err('作业不存在或无权限',404)
     hw=_homework_detail(hw,cur)
+    if hw.get('publish_group'):
+        cur.execute('SELECT class_id FROM homework WHERE publish_group=%s',(hw['publish_group'],))
+        hw['published_class_ids']=[row['class_id'] for row in cur.fetchall()]
+    else:
+        hw['published_class_ids']=[hw['class_id']]
     db.close(); return success(hw)
 
 @app.route('/api/homework', methods=['GET'])
@@ -1358,6 +1363,7 @@ def create_homework():
     auto_enabled=bool(script) and data.get('enable_auto') in (True,'true','1',1)
     db=get_db(); cur=db.cursor()
     created=[]; new_paths=[]; originals={}
+    publish_group=uuid.uuid4().hex
     def store_file(key,upload,name):
         path=os.path.join(UPLOAD_DIR,'homework',name)
         new_paths.append(path)
@@ -1377,9 +1383,9 @@ def create_homework():
             db.rollback();return err('请选择该课程已关联的班级')
         for clid in targets:
             cur.execute("""INSERT INTO homework
-                (course_id,class_id,teacher_id,title,content,deadline,total_score,is_published,has_grading_script,auto_grade_enabled)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,1,%s,%s)""",
-                (cid,clid,request.teacher_id,title,content,deadline,ts,int(bool(script)),int(auto_enabled)))
+                (course_id,class_id,teacher_id,title,content,deadline,total_score,is_published,has_grading_script,auto_grade_enabled,publish_group)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,1,%s,%s,%s)""",
+                (cid,clid,request.teacher_id,title,content,deadline,ts,int(bool(script)),int(auto_enabled),publish_group))
             hid=cur.lastrowid; attachments=[]
             for index,upload in enumerate(materials):
                 path=store_file(index,upload,uuid.uuid4().hex+os.path.splitext(upload.filename)[1])
@@ -1412,7 +1418,13 @@ def create_homework():
 def update_homework(hid):
     ct=request.content_type or ''
     data=request.form if 'multipart' in ct else (request.get_json() or {})
+    if not ('multipart' in ct or isinstance(data,dict)): return err('请求数据格式错误')
     try:
+        add_ids=data.get('add_class_ids',[])
+        if isinstance(add_ids,str): add_ids=json.loads(add_ids)
+        if not isinstance(add_ids,list) or any(not isinstance(x,str) or not x.strip() for x in add_ids):
+            return err('班级列表格式错误')
+        add_ids=list(dict.fromkeys(x.strip() for x in add_ids))
         remove_ids=data.get('remove_attachment_ids',[])
         if isinstance(remove_ids,str): remove_ids=json.loads(remove_ids)
         if not isinstance(remove_ids,list) or any(type(x) is not int or x<=0 for x in remove_ids):
@@ -1430,11 +1442,24 @@ def update_homework(hid):
         d=request.get_json() or {}; title=(d.get('title') or '').strip(); content=(d.get('content') or '').strip()
         dl=d.get('deadline',''); ts=int(d.get('total_score',100))
     db=get_db(); cur=db.cursor()
-    new_paths=[];old_paths=[]
+    new_paths=[];old_paths=[];added=[]
     try:
         db.begin()
-        cur.execute('SELECT id FROM homework WHERE id=%s AND teacher_id=%s FOR UPDATE',(hid,request.teacher_id))
-        if not cur.fetchone(): db.rollback();return err('作业不存在或无权限',404)
+        cur.execute('SELECT h.* FROM homework h JOIN courses c ON c.id=h.course_id WHERE h.id=%s AND h.teacher_id=%s AND c.teacher_id=%s FOR UPDATE',(hid,request.teacher_id,request.teacher_id))
+        source=cur.fetchone()
+        if not source: db.rollback();return err('作业不存在或无权限',404)
+        if add_ids:
+            if not source['is_published'] or not source['class_id']:
+                db.rollback();return err('该作业暂不支持新增班级')
+            cur.execute('SELECT class_id FROM course_classes WHERE course_id=%s FOR UPDATE',(source['course_id'],))
+            allowed={row['class_id'] for row in cur.fetchall()}
+            if not set(add_ids).issubset(allowed):
+                db.rollback();return err('请选择该课程已关联的班级')
+            published={source['class_id']}
+            if source['publish_group']:
+                cur.execute('SELECT class_id FROM homework WHERE publish_group=%s FOR UPDATE',(source['publish_group'],))
+                published.update(row['class_id'] for row in cur.fetchall())
+            add_ids=[class_id for class_id in add_ids if class_id not in published]
         if remove_ids:
             slots=','.join(['%s']*len(remove_ids))
             cur.execute(f'SELECT id,file_path FROM homework_attachments WHERE homework_id=%s AND id IN ({slots}) FOR UPDATE',[hid]+remove_ids)
@@ -1464,6 +1489,8 @@ def update_homework(hid):
                     fn=f.filename;sn=f"{uuid.uuid4().hex}{os.path.splitext(fn)[1]}"
                     fp=os.path.join(UPLOAD_DIR,'homework',sn);new_paths.append(fp);f.save(fp)
                     cur.execute('INSERT INTO homework_attachments (homework_id,file_name,file_path,file_size) VALUES (%s,%s,%s,%s)',(hid,fn,fp,os.path.getsize(fp)))
+        if add_ids:
+            added=_expand_homework_classes(cur,source,add_ids,new_paths)
         db.commit()
     except Exception:
         db.rollback()
@@ -1473,7 +1500,55 @@ def update_homework(hid):
     finally:
         db.close()
     _remove_homework_files(old_paths)
-    return success()
+    return success({'added_classes':added,'published_count':len(added)})
+
+
+def _expand_homework_classes(cur, source, targets, new_paths):
+    hid=source['id']
+    group=source['publish_group'] or uuid.uuid4().hex
+    if not source['publish_group']:
+        cur.execute('UPDATE homework SET publish_group=%s WHERE id=%s',(group,hid))
+    cur.execute('SELECT file_name,file_path,file_size FROM homework_attachments WHERE homework_id=%s',(hid,))
+    attachments=cur.fetchall()
+    cur.execute('SELECT script_path,language,timeout_seconds FROM homework_grading_scripts WHERE homework_id=%s',(hid,))
+    script=cur.fetchone()
+    cur.execute('SELECT course_id,teacher_id,title,content,deadline,total_score,auto_grade_enabled FROM homework WHERE id=%s',(hid,))
+    edited=cur.fetchone()
+    added=[]
+
+    def copy_file(path, filename):
+        original=os.path.realpath(path if os.path.isabs(path) else os.path.join(UPLOAD_DIR,path))
+        folder=os.path.realpath(os.path.join(UPLOAD_DIR,'homework'))
+        if os.path.commonpath([folder,original])!=folder or not os.path.isfile(original):
+            raise OSError('作业文件缺失或位置无效')
+        destination=os.path.join(UPLOAD_DIR,'homework',filename)
+        new_paths.append(destination)
+        shutil.copyfile(original,destination)
+        return destination
+
+    for class_id in targets:
+        cur.execute("""INSERT INTO homework
+            (course_id,class_id,teacher_id,title,content,deadline,total_score,is_published,
+             has_grading_script,auto_grade_enabled,publish_group)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,1,%s,%s,%s)""",
+            (edited['course_id'],class_id,edited['teacher_id'],edited['title'],edited['content'],
+             edited['deadline'],edited['total_score'],int(bool(script)),int(bool(script) and edited['auto_grade_enabled']),group))
+        new_id=cur.lastrowid
+        for attachment in attachments:
+            path=copy_file(attachment['file_path'],uuid.uuid4().hex+os.path.splitext(attachment['file_name'])[1])
+            cur.execute('INSERT INTO homework_attachments (homework_id,file_name,file_path,file_size) VALUES (%s,%s,%s,%s)',
+                        (new_id,attachment['file_name'],path,attachment['file_size']))
+        if script:
+            path=copy_file(script['script_path'],f'grading_{new_id}_{uuid.uuid4().hex[:8]}.py')
+            cur.execute("""INSERT INTO homework_grading_scripts (homework_id,script_path,language,timeout_seconds,created_by)
+                VALUES (%s,%s,%s,%s,%s)""",(new_id,path,script['language'],script['timeout_seconds'],source['teacher_id']))
+        cur.execute("""INSERT INTO student_notifications (student_id,type,title,content,related_id,related_type)
+            SELECT cs.student_id,'homework_new',CONCAT('新作业：',h.title),
+                   CONCAT('课程作业已发布，截止时间：',COALESCE(DATE_FORMAT(h.deadline,'%%Y-%%m-%%d %%H:%%i'),'未定')),
+                   h.id,'homework' FROM class_students cs JOIN homework h ON h.id=%s
+            WHERE cs.class_id=%s""",(new_id,class_id))
+        added.append({'id':new_id,'class_id':class_id})
+    return added
 
 
 def _remove_homework_files(paths):
